@@ -175,11 +175,14 @@ namespace TopSpeed.Tracks.Sectors
             string? portalId,
             MapDirection? direction)
         {
-            if (!string.IsNullOrWhiteSpace(portalId) && deniedPortals.Contains(portalId.Trim()))
+            var portalKey = portalId?.Trim();
+            if (string.IsNullOrWhiteSpace(portalKey))
+                portalKey = null;
+            if (portalKey != null && deniedPortals.Contains(portalKey))
                 return false;
             if (allowedPortals.Count > 0)
             {
-                if (string.IsNullOrWhiteSpace(portalId) || !allowedPortals.Contains(portalId.Trim()))
+                if (portalKey == null || !allowedPortals.Contains(portalKey))
                     return false;
             }
 

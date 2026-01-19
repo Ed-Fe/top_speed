@@ -190,7 +190,7 @@ namespace TopSpeed.Tracks.Topology
             var metadata = approach.Metadata;
             var id = GetString(metadata, "branch_id", "branch", "id") ?? $"{approach.SectorId}_branch";
             var name = GetString(metadata, "branch_name", "name");
-            var role = ParseRole(GetString(metadata, "branch_role", "role"));
+            var role = ParseRole(GetString(metadata, "branch_role", "role")) ?? TrackBranchRole.Undefined;
             var entryPortal = GetString(metadata, "branch_entry", "entry_portal", "entry") ?? approach.EntryPortalId;
             var entryHeading = GetHeading(metadata, "branch_entry_heading", "entry_heading") ?? approach.EntryHeadingDegrees;
             var width = GetFloat(metadata, "branch_width", "width", "lane_width") ?? approach.WidthMeters;
@@ -373,7 +373,7 @@ namespace TopSpeed.Tracks.Topology
             if (string.IsNullOrWhiteSpace(raw))
                 return null;
 
-            var trimmed = raw.Trim().ToLowerInvariant();
+            var trimmed = (raw ?? string.Empty).Trim().ToLowerInvariant();
             switch (trimmed)
             {
                 case "main":

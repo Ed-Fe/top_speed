@@ -1311,6 +1311,8 @@ namespace TopSpeed.Tracks.Map
             portals.Add(new PortalDefinition(entryPortalId, sectorId, entryPos.X, entryPos.Y, width, entryHeading, null, PortalRole.Entry));
             portals.Add(new PortalDefinition(exitPortalId, sectorId, exitPos.X, exitPos.Y, width, null, exitHeading, PortalRole.Exit));
 
+            AddCurveApproachPaths(shapes, paths, id, name, entryPos, exitPos, entryHeading, exitHeading, width, block, issues);
+
             var length = TryFloat(block, "length", out var lengthValue)
                 ? Math.Max(0.1f, lengthValue)
                 : EstimateArcLength(center, entryPos, exitPos, turnRight, radius);
@@ -1329,6 +1331,79 @@ namespace TopSpeed.Tracks.Map
                 ["curve"] = "true"
             };
             approaches.Add(new TrackApproachDefinition(approachId, name, entryPortalId, exitPortalId, entryHeading, exitHeading, width, length, tolerance, curveMetadata));
+        }
+
+        private static void AddCurveApproachPaths(
+            List<ShapeDefinition> shapes,
+            List<PathDefinition> paths,
+            string id,
+            string? name,
+            Vector2 entryPos,
+            Vector2 exitPos,
+            float entryHeading,
+            float exitHeading,
+            float width,
+            SectionBlock block,
+            List<TrackMapIssue> issues)
+        {
+            var hasEntry = TryFloat(block, "entry_offset", out var entryOffset) ||
+                           TryFloat(block, "entry_approach", out entryOffset) ||
+                           TryFloat(block, "entry_length", out entryOffset) ||
+                           TryFloat(block, "approach_entry", out entryOffset);
+            var hasExit = TryFloat(block, "exit_offset", out var exitOffset) ||
+                          TryFloat(block, "exit_approach", out exitOffset) ||
+                          TryFloat(block, "exit_length", out exitOffset) ||
+                          TryFloat(block, "approach_exit", out exitOffset);
+
+            var hasBoth = TryFloat(block, "approach_offset", out var bothOffset) ||
+                          TryFloat(block, "approach_length", out bothOffset) ||
+                          TryFloat(block, "approach", out bothOffset);
+
+            if (hasBoth)
+            {
+                if (!hasEntry)
+                    entryOffset = bothOffset;
+                if (!hasExit)
+                    exitOffset = bothOffset;
+            }
+
+            if (hasEntry && entryOffset > 0f)
+                AddApproachPath(shapes, paths, id, name, "entry", entryPos, entryHeading, -entryOffset, width, issues);
+            if (hasExit && exitOffset > 0f)
+                AddApproachPath(shapes, paths, id, name, "exit", exitPos, exitHeading, exitOffset, width, issues);
+        }
+
+        private static void AddApproachPath(
+            List<ShapeDefinition> shapes,
+            List<PathDefinition> paths,
+            string curveId,
+            string? curveName,
+            string suffix,
+            Vector2 anchor,
+            float headingDegrees,
+            float offsetMeters,
+            float width,
+            List<TrackMapIssue> issues)
+        {
+            var shapeId = $"curve_{curveId}_approach_{suffix}_shape";
+            var pathId = $"curve_{curveId}_approach_{suffix}_path";
+
+            if (shapes.Any(s => string.Equals(s.Id, shapeId, StringComparison.OrdinalIgnoreCase)) ||
+                paths.Any(p => string.Equals(p.Id, pathId, StringComparison.OrdinalIgnoreCase)))
+            {
+                issues.Add(new TrackMapIssue(
+                    TrackMapIssueSeverity.Warning,
+                    $"Curve '{curveId}' skipped generating approach '{suffix}' because ids already exist.",
+                    null));
+                return;
+            }
+
+            var forward = HeadingVector(headingDegrees);
+            var start = anchor + (forward * offsetMeters);
+            var points = new List<Vector2> { start, anchor };
+            shapes.Add(new ShapeDefinition(shapeId, ShapeType.Polyline, points: points));
+            var pathName = string.IsNullOrWhiteSpace(curveName) ? null : $"{curveName} {suffix} approach";
+            paths.Add(new PathDefinition(pathId, PathType.Connector, shapeId, null, null, width, pathName));
         }
 
         private static bool TryGetValue(SectionBlock block, string key, out string value)

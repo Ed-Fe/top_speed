@@ -223,33 +223,33 @@ namespace TopSpeed.Race
 
         private MapSnapshot BuildMapSnapshot(int x, int z, MapDirection heading)
         {
-            if (!_map.TryGetCell(x, z, out var cell))
-            {
-                return new MapSnapshot
-                {
-                    Surface = TrackSurface.Asphalt,
-                    Noise = TrackNoise.NoNoise,
-                    WidthMeters = 0f,
-                    IsSafeZone = false,
-                    Zone = string.Empty,
-                    Exits = MapExits.None
-                };
-            }
+            var worldPosition = _map.CellToWorld(x, z);
+            var position2D = new Vector2(worldPosition.X, worldPosition.Z);
 
             var snapshot = new MapSnapshot
             {
-                Surface = cell.Surface,
-                Noise = cell.Noise,
-                WidthMeters = cell.WidthMeters,
-                IsSafeZone = cell.IsSafeZone,
-                Zone = cell.Zone ?? string.Empty,
-                Exits = cell.Exits
+                Surface = _map.DefaultSurface,
+                Noise = _map.DefaultNoise,
+                WidthMeters = Math.Max(0.5f, _map.DefaultWidthMeters),
+                IsSafeZone = IsSafeZone(position2D),
+                Zone = string.Empty,
+                Exits = MapExits.None,
+                IsOnPath = _pathManager != null && _pathManager.HasPaths && _pathManager.ContainsAny(position2D)
             };
 
-            var worldPosition = _map.CellToWorld(x, z);
-            ApplyPathWidthSnapshot(new Vector2(worldPosition.X, worldPosition.Z), ref snapshot.WidthMeters);
-            ApplyAreaSnapshotOverrides(new Vector2(worldPosition.X, worldPosition.Z), heading, ref snapshot);
-            ApplySectorSnapshotOverrides(new Vector2(worldPosition.X, worldPosition.Z), heading, ref snapshot);
+            if (_map.TryGetCell(x, z, out var cell))
+            {
+                snapshot.Surface = cell.Surface;
+                snapshot.Noise = cell.Noise;
+                snapshot.WidthMeters = cell.WidthMeters;
+                snapshot.IsSafeZone = cell.IsSafeZone;
+                snapshot.Zone = cell.Zone ?? string.Empty;
+                snapshot.Exits = cell.Exits;
+            }
+
+            ApplyPathWidthSnapshot(position2D, ref snapshot.WidthMeters);
+            ApplyAreaSnapshotOverrides(position2D, heading, ref snapshot);
+            ApplySectorSnapshotOverrides(position2D, heading, ref snapshot);
             return snapshot;
         }
 
@@ -411,8 +411,8 @@ namespace TopSpeed.Race
                     _speech.Speak("Leaving zone.");
             }
 
-            var previousCurve = DescribeCurve(previous.Exits, _mapHeading);
-            var currentCurve = DescribeCurve(current.Exits, _mapHeading);
+            var previousCurve = DescribeCurve(previous.Exits, _mapHeading, previous.IsOnPath);
+            var currentCurve = DescribeCurve(current.Exits, _mapHeading, current.IsOnPath);
             if (!string.Equals(previousCurve, currentCurve, StringComparison.OrdinalIgnoreCase))
                 _speech.Speak(currentCurve);
 
@@ -798,10 +798,10 @@ namespace TopSpeed.Race
             return degreesDelta;
         }
 
-        private static string DescribeCurve(MapExits exits, MapDirection heading)
+        private static string DescribeCurve(MapExits exits, MapDirection heading, bool isOnPath)
         {
             if (exits == MapExits.None)
-                return "Off track.";
+                return isOnPath ? "Straight." : "Off track.";
 
             var count = CountExits(exits);
             if (count >= 3)
@@ -890,6 +890,7 @@ namespace TopSpeed.Race
             public bool IsSafeZone;
             public string Zone;
             public MapExits Exits;
+            public bool IsOnPath;
             public string SectorId;
             public TrackSectorType SectorType;
             public bool IsIntersection;

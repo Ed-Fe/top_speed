@@ -187,7 +187,10 @@ width=12
 entry_heading=south
 exit_heading=east
 turn=left
-sector=main_loop
+sector=corner_sw
+entry_portal=p_sw_entry_a
+exit_portal=p_sw_exit
+approach_length=15
 
 
 [shape: beacon_zone]
@@ -202,6 +205,18 @@ x=118
 z=118
 width=14
 height=14
+
+[shape: sw_entry_b_path]
+type=polyline
+points=0,45|0,25
+
+[shape: sw_entry_c_path]
+type=polyline
+points=15,45|15,25
+
+[shape: sw_entry_c_connector]
+type=polyline
+points=15,25|10,20
 
 # Areas
 [area: loop_area]
@@ -241,6 +256,14 @@ type=straight
 name=Main loop
 area=loop_area
 
+[sector: corner_sw]
+type=curve
+name=South west corner
+area=curve_corner_sw_area
+branch_entry=p_sw_entry_a
+branch_exits=p_sw_entry_a,p_sw_entry_b,p_sw_entry_c
+preferred_exit=p_sw_entry_a
+
 # Portals (entry/exit geometry)
 [portal: p_loop_entry]
 sector=main_loop
@@ -258,6 +281,22 @@ width=12
 exit_heading=west
 role=exit
 
+[portal: p_sw_entry_b]
+sector=corner_sw
+x=0
+z=25
+width=12
+entry_heading=south
+role=entry
+
+[portal: p_sw_entry_c]
+sector=corner_sw
+x=15
+z=25
+width=12
+entry_heading=south
+role=entry
+
 [link]
 from=p_loop_entry
 to=p_loop_exit
@@ -270,6 +309,24 @@ from=p_loop_entry
 to=p_loop_exit
 width=12
 name=Loop path
+
+[path: sw_entry_b_approach]
+type=connector
+shape=sw_entry_b_path
+width=12
+name=SW approach B
+
+[path: sw_entry_c_approach]
+type=connector
+shape=sw_entry_c_path
+width=12
+name=SW approach C
+
+[path: sw_entry_c_connector]
+type=connector
+shape=sw_entry_c_connector
+width=12
+name=SW entry C connector
 
 # Beacons / markers
 [beacon: b_center]
