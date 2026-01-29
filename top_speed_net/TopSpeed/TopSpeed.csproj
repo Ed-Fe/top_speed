@@ -51,5 +51,10 @@
       <Link>Tracks\%(RecursiveDir)%(Filename)%(Extension)</Link>
       <TargetPath>Tracks\%(RecursiveDir)%(Filename)%(Extension)</TargetPath>
     </Content>
+    <Content Include="docs\**\*">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Link>docs\%(RecursiveDir)%(Filename)%(Extension)</Link>
+      <TargetPath>docs\%(RecursiveDir)%(Filename)%(Extension)</TargetPath>
+    </Content>
   </ItemGroup>
 </Project>
