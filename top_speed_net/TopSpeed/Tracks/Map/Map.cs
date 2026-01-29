@@ -8,6 +8,7 @@ using TopSpeed.Tracks.Guidance;
 using TopSpeed.Tracks.Markers;
 using TopSpeed.Tracks.Sectors;
 using TopSpeed.Tracks.Topology;
+using TopSpeed.Tracks.Walls;
 
 namespace TopSpeed.Tracks.Map
 {
@@ -18,10 +19,11 @@ namespace TopSpeed.Tracks.Map
         private readonly List<TrackAreaDefinition> _areas;
         private readonly List<PortalDefinition> _portals;
         private readonly List<LinkDefinition> _links;
-        private readonly List<PathDefinition> _paths;
         private readonly List<TrackBeaconDefinition> _beacons;
         private readonly List<TrackMarkerDefinition> _markers;
         private readonly List<TrackApproachDefinition> _approaches;
+        private readonly List<TrackBranchDefinition> _branches;
+        private readonly List<TrackWallDefinition> _walls;
 
         public TrackMap(string name, float cellSizeMeters)
         {
@@ -32,10 +34,11 @@ namespace TopSpeed.Tracks.Map
             _areas = new List<TrackAreaDefinition>();
             _portals = new List<PortalDefinition>();
             _links = new List<LinkDefinition>();
-            _paths = new List<PathDefinition>();
             _beacons = new List<TrackBeaconDefinition>();
             _markers = new List<TrackMarkerDefinition>();
             _approaches = new List<TrackApproachDefinition>();
+            _branches = new List<TrackBranchDefinition>();
+            _walls = new List<TopSpeed.Tracks.Walls.TrackWallDefinition>();
         }
 
         public string Name { get; }
@@ -45,10 +48,11 @@ namespace TopSpeed.Tracks.Map
         public IReadOnlyList<ShapeDefinition> Shapes => _shapes;
         public IReadOnlyList<PortalDefinition> Portals => _portals;
         public IReadOnlyList<LinkDefinition> Links => _links;
-        public IReadOnlyList<PathDefinition> Paths => _paths;
         public IReadOnlyList<TrackBeaconDefinition> Beacons => _beacons;
         public IReadOnlyList<TrackMarkerDefinition> Markers => _markers;
         public IReadOnlyList<TrackApproachDefinition> Approaches => _approaches;
+        public IReadOnlyList<TrackBranchDefinition> Branches => _branches;
+        public IReadOnlyList<TrackWallDefinition> Walls => _walls;
         public TrackWeather Weather { get; set; } = TrackWeather.Sunny;
         public TrackAmbience Ambience { get; set; } = TrackAmbience.NoAmbience;
         public TrackSurface DefaultSurface { get; set; } = TrackSurface.Asphalt;
@@ -97,12 +101,6 @@ namespace TopSpeed.Tracks.Map
             _links.Add(link);
         }
 
-        public void AddPath(PathDefinition path)
-        {
-            if (path == null)
-                throw new ArgumentNullException(nameof(path));
-            _paths.Add(path);
-        }
 
         public void AddBeacon(TrackBeaconDefinition beacon)
         {
@@ -118,11 +116,25 @@ namespace TopSpeed.Tracks.Map
             _markers.Add(marker);
         }
 
+        public void AddWall(TrackWallDefinition wall)
+        {
+            if (wall == null)
+                throw new ArgumentNullException(nameof(wall));
+            _walls.Add(wall);
+        }
+
         public void AddApproach(TrackApproachDefinition approach)
         {
             if (approach == null)
                 throw new ArgumentNullException(nameof(approach));
             _approaches.Add(approach);
+        }
+
+        public void AddBranch(TrackBranchDefinition branch)
+        {
+            if (branch == null)
+                throw new ArgumentNullException(nameof(branch));
+            _branches.Add(branch);
         }
 
         public TrackAreaManager BuildAreaManager()
@@ -222,11 +234,6 @@ namespace TopSpeed.Tracks.Map
             return false;
         }
 
-        public TrackPathManager BuildPathManager()
-        {
-            return new TrackPathManager(_paths, _shapes, BuildPortalManager(), DefaultWidthMeters);
-        }
-
         public TrackSectorManager BuildSectorManager()
         {
             return new TrackSectorManager(_sectors, BuildAreaManager(), BuildPortalManager());
@@ -244,7 +251,7 @@ namespace TopSpeed.Tracks.Map
 
         public TrackBranchManager BuildBranchManager()
         {
-            return new TrackBranchManager(_sectors, _approaches, BuildPortalManager());
+            return new TrackBranchManager(_sectors, _approaches, _branches, BuildPortalManager());
         }
 
         private static bool TryGetShapeBounds(ShapeDefinition shape, out float minX, out float minZ, out float maxX, out float maxZ)

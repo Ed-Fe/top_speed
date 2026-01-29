@@ -10,29 +10,11 @@ ambience=noambience
 start_x=0
 start_z=0
 start_heading=east
+safe_zone_ring=50
 
 # Legacy grid removed; path/area topology only.
 
 # Shapes
-[shape: loop_shape]
-type=rectangle
-x=0
-z=0
-width=250
-height=250
-
-[shape: loop_path_shape]
-type=polyline
-points=0,0|250,0|250,250|0,250|0,0
-
-[shape: safe_zone_ring]
-type=ring
-x=0
-z=0
-width=250
-height=250
-ring_width=50
-
 [shape: outer_grass_ring]
 type=ring
 x=-50
@@ -46,7 +28,7 @@ type=rectangle
 x=0
 z=0
 width=30
-height=30
+height=40
 
 [shape: beacon_zone]
 type=circle
@@ -65,15 +47,50 @@ height=14
 type=rectangle
 x=205
 z=0
-width=30
+width=45
 height=60
 
-[shape: east_turn_path_zone]
+[shape: loop_south_zone]
 type=rectangle
-x=190
+x=30
 z=0
-width=80
-height=250
+width=175
+height=40
+
+[shape: loop_west_zone]
+type=rectangle
+x=0
+z=40
+width=40
+height=170
+
+[shape: loop_north_zone]
+type=rectangle
+x=40
+z=210
+width=170
+height=40
+
+[shape: loop_east_zone]
+type=rectangle
+x=205
+z=60
+width=45
+height=150
+
+[shape: corner_nw_zone]
+type=rectangle
+x=0
+z=210
+width=40
+height=40
+
+[shape: corner_ne_zone]
+type=rectangle
+x=210
+z=210
+width=40
+height=40
 
 [shape: east_turn_beacon_zone]
 type=rectangle
@@ -89,30 +106,62 @@ z=0
 width=40
 height=30
 
-
-[shape: east_branch_path]
-type=polyline
-points=251,125|300,125
-
-[shape: sw_entry_a_path]
-type=polyline
-points=0,45|0,30
-
-[shape: sw_entry_c_path]
-type=polyline
-points=15,45|15,30
-
-[shape: sw_entry_c_connector]
-type=polyline
-points=15,30|15,0|30,0
-
 # Areas
 [area: loop_area]
 type=zone
-shape=loop_path_shape
+shape=loop_south_zone
 surface=asphalt
 noise=nonoise
-width=40
+auto_walls=true
+wall_edges=north
+wall_width=2
+wall_material=concrete
+wall_collision=block
+
+[area: loop_west]
+type=zone
+shape=loop_west_zone
+surface=asphalt
+noise=nonoise
+auto_walls=true
+wall_edges=east
+wall_width=2
+wall_material=concrete
+wall_collision=block
+
+[area: loop_north]
+type=zone
+shape=loop_north_zone
+surface=asphalt
+noise=nonoise
+auto_walls=true
+wall_edges=south
+wall_width=2
+wall_material=concrete
+wall_collision=block
+
+[area: loop_east]
+type=zone
+shape=loop_east_zone
+surface=asphalt
+noise=nonoise
+auto_walls=true
+wall_edges=west
+wall_width=2
+wall_material=concrete
+wall_collision=block
+
+[area: corner_nw_area]
+type=zone
+shape=corner_nw_zone
+surface=asphalt
+noise=nonoise
+
+[area: corner_ne_area]
+type=zone
+shape=corner_ne_zone
+surface=asphalt
+noise=nonoise
 
 [area: outer_grass]
 type=boundary
@@ -120,14 +169,6 @@ name=Outer grass ring
 shape=outer_grass_ring
 surface=sand
 noise=nonoise
-
-[area: safe_zone]
-type=safezone
-name=Safe zone ring
-shape=safe_zone_ring
-surface=gravel
-noise=trackside
-flags=safe
 
 
 [area: main_intersection]
@@ -152,7 +193,11 @@ name=East corner turn
 shape=east_turn_zone
 surface=asphalt
 noise=trackside
-width=80
+auto_walls=true
+wall_edges=west
+wall_width=2
+wall_material=concrete
+wall_collision=block
 
 [area: start_area]
 type=start
@@ -174,35 +219,47 @@ grid_max_vehicles=8
 # Sector (track-native)
 [sector: main_loop]
 type=straight
-name=Main loop
+name=South straight
 area=loop_area
+
+[sector: loop_west]
+type=straight
+name=West straight
+area=loop_west
+
+[sector: loop_north]
+type=straight
+name=North straight
+area=loop_north
+
+[sector: loop_east]
+type=straight
+name=East straight
+area=loop_east
+
+[sector: corner_nw]
+type=straight
+name=North west corner
+area=corner_nw_area
+
+[sector: corner_ne]
+type=straight
+name=North east corner
+area=corner_ne_area
 
 [sector: corner_sw]
 type=straight
 name=South west corner
 area=corner_sw_area
-branch_role=connector
-branch_entry=p_sw_entry_a
-branch_exits=p_sw_entry_a,p_sw_entry_c
-preferred_exit=p_sw_entry_a
 
 [sector: east_turn]
 type=straight
 name=East corner
 area=east_turn_area
-branch_role=connector
-branch_entry=p_east_entry
-branch_exits=p_east_north
-preferred_exit=p_east_north
-approach_side=exit
-turn_range=60
-beacon_range=0
-beacon_shape=east_turn_beacon_zone
-turn_shape=east_turn_beacon_zone
 
 # Portals (entry/exit geometry)
 [portal: p_loop_entry]
-sector=main_loop
+sector=corner_sw
 x=0
 z=0
 width=12
@@ -210,7 +267,7 @@ entry_heading=east
 role=entry
 
 [portal: p_loop_exit]
-sector=main_loop
+sector=corner_ne
 x=250
 z=250
 width=12
@@ -257,54 +314,38 @@ width=12
 exit_heading=north
 role=exit
 
+# Guides (area-linked guidance)
+[guide: east_turn_guide]
+area=east_turn_area
+name=East corner guide
+entry_portal=p_east_entry
+exit_portal=p_east_north
+entry_heading=east
+exit_heading=north
+side=exit
+turn_range=60
+beacon_range=0
+centerline_shape=east_turn_beacon_zone
+
+# Branches (area-linked exits)
+[branch: sw_corner_branch]
+area=corner_sw_area
+role=connector
+entry_portal=p_sw_entry_a
+exits=p_sw_entry_a,p_sw_entry_c
+preferred_exit=p_sw_entry_a
+
+[branch: east_turn_branch]
+area=east_turn_area
+role=connector
+entry_portal=p_east_entry
+exits=p_east_north
+preferred_exit=p_east_north
+
 [link]
 from=p_loop_entry
 to=p_loop_exit
 dir=oneway
-
-[path: loop_path]
-type=road
-shape=loop_path_shape
-from=p_loop_entry
-to=p_loop_exit
-width=40
-name=Loop path
-
-[path: sw_entry_a_approach]
-type=connector
-shape=sw_entry_a_path
-width=12
-name=SW approach A
-
-[path: sw_entry_c_approach]
-type=connector
-shape=sw_entry_c_path
-width=12
-name=SW approach C
-
-[path: sw_entry_c_connector]
-type=connector
-shape=sw_entry_c_connector
-width=12
-name=SW entry C connector
-
-[path: corner_sw_path]
-type=connector
-shape=corner_sw_zone
-width=40
-name=SW corner zone
-
-[path: east_turn_path]
-type=connector
-shape=east_turn_path_zone
-width=60
-name=East turn zone
-
-[path: east_branch_path]
-type=branch
-shape=east_branch_path
-width=10
-name=East branch
 
 # Beacons / markers
 [beacon: b_center]
@@ -325,7 +366,8 @@ heading=270
 
 # Approach definition (explicit alignment)
 [approach: main_loop]
-name=Main loop alignment
+name=Loop alignment
+sector=main_loop
 entry_portal=p_loop_entry
 exit_portal=p_loop_exit
 entry_heading=east

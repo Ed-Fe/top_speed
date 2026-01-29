@@ -10,6 +10,7 @@ using TopSpeed.Tracks.Guidance;
 using TopSpeed.Tracks.Geometry;
 using TopSpeed.Tracks.Sectors;
 using TopSpeed.Tracks.Topology;
+using TopSpeed.Tracks.Walls;
 using TS.Audio;
 
 namespace TopSpeed.Tracks.Map
@@ -55,8 +56,8 @@ namespace TopSpeed.Tracks.Map
         private readonly TrackPortalManager _portalManager;
         private readonly TrackApproachManager _approachManager;
         private readonly TrackApproachBeacon _approachBeacon;
-        private readonly TrackPathManager _pathManager;
         private readonly TrackBranchManager _branchManager;
+        private readonly TrackWallManager _wallManager;
         private readonly string _trackName;
         private readonly bool _userDefined;
         private TrackNoise _currentNoise;
@@ -94,8 +95,8 @@ namespace TopSpeed.Tracks.Map
             _sectorRuleManager = map.BuildSectorRuleManager();
             _approachManager = new TrackApproachManager(map.Sectors, map.Approaches, _portalManager);
             _approachBeacon = new TrackApproachBeacon(map);
-            _pathManager = new TrackPathManager(map.Paths, map.Shapes, _portalManager, map.DefaultWidthMeters);
             _branchManager = map.BuildBranchManager();
+            _wallManager = new TrackWallManager(map.Shapes, map.Walls);
             _trackLength = ResolveTrackLength();
             InitializeSounds();
         }
@@ -169,7 +170,6 @@ namespace TopSpeed.Tracks.Map
             var surface = _map.DefaultSurface;
             var noise = _map.DefaultNoise;
 
-            ApplyPathWidth(state.WorldPosition, ref width);
             ApplyAreaOverrides(state.WorldPosition, state.HeadingDegrees, ref width, ref length, ref surface, ref noise, ref safeZone);
 
             road.Left = -width * 0.5f;
@@ -198,58 +198,7 @@ namespace TopSpeed.Tracks.Map
             if (best > 0f)
                 return best;
 
-            if (_pathManager != null && _pathManager.HasPaths)
-            {
-                foreach (var path in _pathManager.Paths)
-                {
-                    if (path?.Shape == null)
-                        continue;
-                    var length = GetShapeLength(path.Shape);
-                    if (length > best)
-                        best = length;
-                }
-            }
-
             return Math.Max(0f, best);
-        }
-
-        private static float GetShapeLength(ShapeDefinition shape)
-        {
-            if (shape == null)
-                return 0f;
-
-            switch (shape.Type)
-            {
-                case ShapeType.Rectangle:
-                    return Math.Max(Math.Abs(shape.Width), Math.Abs(shape.Height));
-                case ShapeType.Circle:
-                    return 2f * (float)Math.PI * Math.Abs(shape.Radius);
-                case ShapeType.Ring:
-                    if (shape.Radius > 0f)
-                        return 2f * (float)Math.PI * Math.Abs(shape.Radius);
-                    return 2f * (Math.Abs(shape.Width) + Math.Abs(shape.Height));
-                case ShapeType.Polyline:
-                    return PolylineLength(shape.Points, false);
-                case ShapeType.Polygon:
-                    return PolylineLength(shape.Points, true);
-                default:
-                    return 0f;
-            }
-        }
-
-        private static float PolylineLength(IReadOnlyList<Vector2>? points, bool closed)
-        {
-            if (points == null || points.Count < 2)
-                return 0f;
-
-            var length = 0f;
-            for (var i = 0; i < points.Count - 1; i++)
-                length += Vector2.Distance(points[i], points[i + 1]);
-
-            if (closed && points.Count > 2)
-                length += Vector2.Distance(points[points.Count - 1], points[0]);
-
-            return length;
         }
 
         public bool IsInsideFinishArea(Vector3 worldPosition)
@@ -306,6 +255,13 @@ namespace TopSpeed.Tracks.Map
             var heading = MapMovement.NormalizeDegrees(headingDegrees);
             var direction = MapMovement.HeadingVector(heading);
             var nextPosition = previousPosition + (direction * distanceMeters);
+
+            if (TryGetWallCollision(previousPosition, nextPosition, out _))
+            {
+                boundaryHit = true;
+                road = RoadAt(state);
+                return false;
+            }
 
             if (!IsWithinTrack(nextPosition))
             {
@@ -533,18 +489,37 @@ namespace TopSpeed.Tracks.Map
             if (areas.Count == 0)
                 return;
 
-            var area = areas[areas.Count - 1];
-            if (area.Surface.HasValue)
-                surface = area.Surface.Value;
-            if (area.Noise.HasValue)
-                noise = area.Noise.Value;
-            if (area.WidthMeters.HasValue)
-                width = Math.Max(0.5f, area.WidthMeters.Value);
-            if (area.Type == TrackAreaType.SafeZone || (area.Flags & TrackAreaFlags.SafeZone) != 0)
-                safeZone = true;
+            TrackAreaDefinition? surfaceArea = null;
+            TrackAreaDefinition? widthArea = null;
+            foreach (var candidate in areas)
+            {
+                if (candidate == null)
+                    continue;
 
-            if (!TryApplyMetadataDimensions(area.Metadata, ref width, ref length))
-                TryApplyShapeDimensions(area, heading, ref width, ref length);
+                if (candidate.Type == TrackAreaType.SafeZone || (candidate.Flags & TrackAreaFlags.SafeZone) != 0)
+                    safeZone = true;
+
+                surfaceArea = candidate;
+                if (IsWidthAffectingArea(candidate))
+                    widthArea = candidate;
+            }
+
+            if (surfaceArea != null)
+            {
+                if (surfaceArea.Surface.HasValue)
+                    surface = surfaceArea.Surface.Value;
+                if (surfaceArea.Noise.HasValue)
+                    noise = surfaceArea.Noise.Value;
+            }
+
+            if (widthArea != null)
+            {
+                if (widthArea.WidthMeters.HasValue)
+                    width = Math.Max(0.5f, widthArea.WidthMeters.Value);
+
+                if (!TryApplyMetadataDimensions(widthArea.Metadata, ref width, ref length))
+                    TryApplyShapeDimensions(widthArea, heading, ref width, ref length);
+            }
         }
 
         private void ApplySectorOverrides(
@@ -737,6 +712,11 @@ namespace TopSpeed.Tracks.Map
             if (approach?.Metadata == null || approach.Metadata.Count == 0)
                 return true;
 
+            if (TryGetMetadataBool(approach.Metadata, out var enabled, "enabled") && !enabled)
+                return false;
+            if (TryGetMetadataBool(approach.Metadata, out var turnEnabled, "turn_enabled") && !turnEnabled)
+                return false;
+
             if (TryGetMetadataString(approach.Metadata, out var raw, "approach_side", "approach_sides", "side"))
             {
                 var trimmed = raw.Trim().ToLowerInvariant();
@@ -806,7 +786,7 @@ namespace TopSpeed.Tracks.Map
             shape = null!;
             if (approach?.Metadata == null || approach.Metadata.Count == 0)
                 return false;
-            if (!TryGetMetadataString(approach.Metadata, out var shapeId, "turn_shape", "beacon_shape", "approach_shape"))
+            if (!TryGetMetadataString(approach.Metadata, out var shapeId, "turn_shape", "centerline_shape", "beacon_shape", "approach_shape"))
                 return false;
             return _areaManager.TryGetShape(shapeId, out shape);
         }
@@ -969,21 +949,6 @@ namespace TopSpeed.Tracks.Map
             _soundBeacon = CreateSpatial(root, "beacon.wav");
         }
 
-        private void ApplyPathWidth(Vector3 worldPosition, ref float width)
-        {
-            if (_pathManager == null || !_pathManager.HasPaths)
-                return;
-
-            var position = new Vector2(worldPosition.X, worldPosition.Z);
-            var paths = _pathManager.FindPathsContaining(position);
-            if (paths.Count == 0)
-                return;
-
-            var path = paths[paths.Count - 1];
-            if (path.WidthMeters > 0f)
-                width = Math.Max(0.5f, path.WidthMeters);
-        }
-
         private AudioSourceHandle? CreateLoop(string root, string file)
         {
             var path = Path.Combine(root, file);
@@ -1124,17 +1089,74 @@ namespace TopSpeed.Tracks.Map
             var position = new Vector2(worldPosition.X, worldPosition.Z);
             if (IsBlockedBySectorRules(position))
                 return false;
-            if (_pathManager.HasPaths)
-            {
-                if (_pathManager.ContainsAny(position))
-                    return true;
-                if (_areaManager != null && _areaManager.ContainsTrackArea(position))
-                    return true;
-                return isSafeZone;
-            }
+            if (IsBlockedByWall(position))
+                return false;
             if (_areaManager != null && _areaManager.ContainsTrackArea(position))
                 return true;
             return isSafeZone;
+        }
+
+        public bool TryGetWallCollision(Vector3 fromWorld, Vector3 toWorld, out TrackWallDefinition wall)
+        {
+            wall = null!;
+            if (_wallManager == null || !_wallManager.HasWalls)
+                return false;
+
+            var from = new Vector2(fromWorld.X, fromWorld.Z);
+            var to = new Vector2(toWorld.X, toWorld.Z);
+            var delta = to - from;
+            var distance = delta.Length();
+            if (distance <= 0.001f)
+                return false;
+
+            var steps = Math.Max(1, (int)Math.Ceiling(distance / 1.0f));
+            var step = delta / steps;
+            var pos = from;
+            for (var i = 0; i <= steps; i++)
+            {
+                if (TryFindWallAt(pos, out wall))
+                    return true;
+                pos += step;
+            }
+
+            return false;
+        }
+
+        private bool IsBlockedByWall(Vector2 position)
+        {
+            if (_wallManager == null || !_wallManager.HasWalls)
+                return false;
+            return TryFindWallAt(position, out _);
+        }
+
+        private bool TryFindWallAt(Vector2 position, out TrackWallDefinition wall)
+        {
+            wall = null!;
+            foreach (var candidate in _wallManager.Walls)
+            {
+                if (candidate == null)
+                    continue;
+                if (candidate.CollisionMode == TrackWallCollisionMode.Pass)
+                    continue;
+                if (_wallManager.Contains(candidate, position))
+                {
+                    wall = candidate;
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        private static bool IsWidthAffectingArea(TrackAreaDefinition area)
+        {
+            if (area == null)
+                return false;
+            if (area.Type == TrackAreaType.Boundary || area.Type == TrackAreaType.OffTrack)
+                return false;
+            if (area.Type == TrackAreaType.Start || area.Type == TrackAreaType.Finish ||
+                area.Type == TrackAreaType.Checkpoint || area.Type == TrackAreaType.Intersection)
+                return false;
+            return true;
         }
 
         private bool IsSafeZone(Vector2 position)

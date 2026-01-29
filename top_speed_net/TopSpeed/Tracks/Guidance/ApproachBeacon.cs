@@ -194,6 +194,11 @@ namespace TopSpeed.Tracks.Guidance
             if (approach?.Metadata == null || approach.Metadata.Count == 0)
                 return true;
 
+            if (TryGetBool(approach.Metadata, out var enabled, "enabled") && !enabled)
+                return false;
+            if (TryGetBool(approach.Metadata, out var beaconEnabled, "beacon_enabled") && !beaconEnabled)
+                return false;
+
             if (TryGetString(approach.Metadata, out var raw, "approach_side", "approach_sides", "side"))
             {
                 var trimmed = raw.Trim().ToLowerInvariant();
@@ -349,7 +354,7 @@ namespace TopSpeed.Tracks.Guidance
             if (approach?.Metadata == null || approach.Metadata.Count == 0)
                 return false;
 
-            if (!TryGetString(approach.Metadata, out var shapeId, "beacon_shape", "beacon_zone", "approach_shape"))
+            if (!TryGetString(approach.Metadata, out var shapeId, "beacon_shape", "centerline_shape", "beacon_zone", "approach_shape"))
                 return false;
 
             return _shapesById.TryGetValue(shapeId.Trim(), out shape!);

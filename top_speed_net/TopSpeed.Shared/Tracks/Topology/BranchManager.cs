@@ -94,11 +94,22 @@ namespace TopSpeed.Tracks.Topology
         public TrackBranchManager(
             IEnumerable<TrackSectorDefinition> sectors,
             IEnumerable<TrackApproachDefinition> approaches,
+            IEnumerable<TrackBranchDefinition> branches,
             TrackPortalManager portalManager)
         {
             _portalManager = portalManager ?? throw new ArgumentNullException(nameof(portalManager));
             _branchesById = new Dictionary<string, TrackBranchDefinition>(StringComparer.OrdinalIgnoreCase);
             _branchesBySector = new Dictionary<string, List<TrackBranchDefinition>>(StringComparer.OrdinalIgnoreCase);
+
+            if (branches != null)
+            {
+                foreach (var branch in branches)
+                {
+                    if (branch == null)
+                        continue;
+                    AddBranch(branch);
+                }
+            }
 
             if (sectors != null)
             {
@@ -119,6 +130,11 @@ namespace TopSpeed.Tracks.Topology
                     BuildFromApproach(approach);
                 }
             }
+        }
+
+        public TrackBranchManager(IEnumerable<TrackSectorDefinition> sectors, IEnumerable<TrackApproachDefinition> approaches, TrackPortalManager portalManager)
+            : this(sectors, approaches, Array.Empty<TrackBranchDefinition>(), portalManager)
+        {
         }
 
         public IReadOnlyCollection<TrackBranchDefinition> Branches => _branchesById.Values;

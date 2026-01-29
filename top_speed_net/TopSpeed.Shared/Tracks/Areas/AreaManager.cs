@@ -107,6 +107,9 @@ namespace TopSpeed.Tracks.Areas
                     continue;
                 if (area.Type == TrackAreaType.Boundary || area.Type == TrackAreaType.OffTrack)
                     continue;
+                if (area.Type == TrackAreaType.Start || area.Type == TrackAreaType.Finish ||
+                    area.Type == TrackAreaType.Checkpoint || area.Type == TrackAreaType.Intersection)
+                    continue;
                 if (Contains(area, position))
                     return true;
             }

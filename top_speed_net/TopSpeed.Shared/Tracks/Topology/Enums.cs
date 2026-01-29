@@ -24,17 +24,4 @@ namespace TopSpeed.Tracks.Topology
         OneWay
     }
 
-    public enum PathType
-    {
-        Undefined = 0,
-        Road,
-        Curve,
-        Intersection,
-        Connector,
-        Lane,
-        Branch,
-        Merge,
-        Split,
-        PitLane
-    }
 }

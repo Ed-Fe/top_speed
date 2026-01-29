@@ -1,10 +1,12 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Numerics;
 using TopSpeed.Core;
 using TopSpeed.Data;
 using TopSpeed.Tracks.Areas;
 using TopSpeed.Tracks.Topology;
+using TopSpeed.Tracks.Walls;
 
 namespace TopSpeed.Tracks.Map
 {
@@ -74,17 +76,20 @@ namespace TopSpeed.Tracks.Map
                 map.AddPortal(portal);
             foreach (var link in definition.Links)
                 map.AddLink(link);
-            foreach (var pathDef in definition.Paths)
-                map.AddPath(pathDef);
             foreach (var beacon in definition.Beacons)
                 map.AddBeacon(beacon);
             foreach (var marker in definition.Markers)
                 map.AddMarker(marker);
             foreach (var approach in definition.Approaches)
                 map.AddApproach(approach);
+            foreach (var branch in definition.Branches)
+                map.AddBranch(branch);
+            foreach (var wall in definition.Walls)
+                map.AddWall(wall);
 
             AddSafeZoneRing(map, definition.Metadata);
             AddOuterRing(map, definition.Metadata);
+            AddAutoWalls(map, definition);
             ApplyStartFromAreas(map, definition);
             ApplyFinishFromAreas(map, definition);
 
@@ -110,8 +115,10 @@ namespace TopSpeed.Tracks.Map
             var ringMeters = metadata.SafeZoneRingMeters;
             if (ringMeters <= 0f)
                 return;
+            if (HasExplicitSafeZone(map))
+                return;
 
-            if (!TryGetTopologyBounds(map, out var minX, out var minZ, out var maxX, out var maxZ))
+            if (!TryGetDrivableBounds(map, out var minX, out var minZ, out var maxX, out var maxZ))
                 return;
 
             var innerMinX = minX;
@@ -136,7 +143,7 @@ namespace TopSpeed.Tracks.Map
             if (ringMeters <= 0f)
                 return;
 
-            if (!TryGetTopologyBounds(map, out var minX, out var minZ, out var maxX, out var maxZ))
+            if (!TryGetDrivableBounds(map, out var minX, out var minZ, out var maxX, out var maxZ))
                 return;
 
             var innerMinX = minX;
@@ -151,6 +158,369 @@ namespace TopSpeed.Tracks.Map
             var areaType = metadata.OuterRingType;
 
             AddRingShapeArea(map, "__outer_ring", innerMinX, innerMinZ, innerMaxX - innerMinX, innerMaxZ - innerMinZ, ringMeters, name, surface, noise, areaType, flags);
+        }
+
+        private static void AddAutoWalls(TrackMap map, TrackMapDefinition definition)
+        {
+            if (map == null || definition == null)
+                return;
+
+            if (definition.Areas.Count == 0)
+                return;
+
+            var shapesById = new Dictionary<string, ShapeDefinition>(StringComparer.OrdinalIgnoreCase);
+            foreach (var shape in map.Shapes)
+            {
+                if (shape == null)
+                    continue;
+                shapesById[shape.Id] = shape;
+            }
+
+            var areaManager = map.BuildAreaManager();
+            var stepMeters = Math.Max(0.5f, map.CellSizeMeters);
+            var edgeProbe = Math.Max(0.01f, stepMeters * 0.05f);
+
+            foreach (var area in definition.Areas)
+            {
+                if (area == null || area.Metadata == null || area.Metadata.Count == 0)
+                    continue;
+                if (!TryGetMetadataBool(area.Metadata, out var enabled, "auto_walls", "auto_wall", "walls_auto", "auto_wall_enabled"))
+                    continue;
+                if (!enabled)
+                    continue;
+                if (!shapesById.TryGetValue(area.ShapeId, out var shape))
+                    continue;
+                if (shape.Type != ShapeType.Rectangle)
+                    continue;
+
+                var edges = ParseWallEdges(area.Metadata);
+                if (edges == WallEdges.None)
+                    continue;
+
+                var wallWidth = TryGetMetadataFloat(area.Metadata, out var widthValue, "wall_width", "wall_thickness", "wall_size")
+                    ? Math.Max(0.1f, widthValue)
+                    : 2f;
+                var material = ParseWallMaterial(area.Metadata);
+                var collision = ParseWallCollision(area.Metadata);
+
+                var minX = Math.Min(shape.X, shape.X + shape.Width);
+                var maxX = Math.Max(shape.X, shape.X + shape.Width);
+                var minZ = Math.Min(shape.Z, shape.Z + shape.Height);
+                var maxZ = Math.Max(shape.Z, shape.Z + shape.Height);
+                if ((edges & WallEdges.North) != 0)
+                    AddWallEdgeSegments(map, shapesById, area, areaManager, stepMeters, edgeProbe, "north",
+                        minX, maxX, maxZ, wallWidth, material, collision);
+                if ((edges & WallEdges.South) != 0)
+                    AddWallEdgeSegments(map, shapesById, area, areaManager, stepMeters, edgeProbe, "south",
+                        minX, maxX, minZ, wallWidth, material, collision);
+                if ((edges & WallEdges.East) != 0)
+                    AddWallEdgeSegments(map, shapesById, area, areaManager, stepMeters, edgeProbe, "east",
+                        minZ, maxZ, maxX, wallWidth, material, collision);
+                if ((edges & WallEdges.West) != 0)
+                    AddWallEdgeSegments(map, shapesById, area, areaManager, stepMeters, edgeProbe, "west",
+                        minZ, maxZ, minX, wallWidth, material, collision);
+            }
+        }
+
+        private static void AddWallEdgeSegments(
+            TrackMap map,
+            Dictionary<string, ShapeDefinition> shapesById,
+            TrackAreaDefinition area,
+            TrackAreaManager areaManager,
+            float stepMeters,
+            float edgeProbe,
+            string edge,
+            float spanMin,
+            float spanMax,
+            float edgePosition,
+            float wallWidth,
+            TrackWallMaterial material,
+            TrackWallCollisionMode collision)
+        {
+            var length = spanMax - spanMin;
+            if (length <= 0.01f)
+                return;
+
+            var steps = Math.Max(1, (int)Math.Ceiling(length / stepMeters));
+            var segment = length / steps;
+            var runStart = float.NaN;
+
+            for (var i = 0; i < steps; i++)
+            {
+                var segStart = spanMin + (segment * i);
+                var segEnd = (i == steps - 1) ? spanMax : segStart + segment;
+                var segMid = (segStart + segEnd) * 0.5f;
+                var adjacent = IsAdjacent(areaManager, edge, segStart, segEnd, segMid, edgePosition, edgeProbe);
+
+                if (adjacent)
+                {
+                    if (!float.IsNaN(runStart))
+                    {
+                        AddWallRun(map, shapesById, area, edge, runStart, segStart, edgePosition, wallWidth, material, collision);
+                        runStart = float.NaN;
+                    }
+                }
+                else
+                {
+                    if (float.IsNaN(runStart))
+                        runStart = segStart;
+                }
+            }
+
+            if (!float.IsNaN(runStart))
+                AddWallRun(map, shapesById, area, edge, runStart, spanMax, edgePosition, wallWidth, material, collision);
+        }
+
+        private static bool IsAdjacent(
+            TrackAreaManager areaManager,
+            string edge,
+            float segStart,
+            float segEnd,
+            float segMid,
+            float edgePosition,
+            float edgeProbe)
+        {
+            var outside = edge switch
+            {
+                "north" => new Vector2(segMid, edgePosition + edgeProbe),
+                "south" => new Vector2(segMid, edgePosition - edgeProbe),
+                "east" => new Vector2(edgePosition + edgeProbe, segMid),
+                "west" => new Vector2(edgePosition - edgeProbe, segMid),
+                _ => new Vector2(segMid, edgePosition + edgeProbe)
+            };
+
+            if (areaManager.ContainsTrackArea(outside))
+                return true;
+
+            var startPoint = edge switch
+            {
+                "north" => new Vector2(segStart, edgePosition + edgeProbe),
+                "south" => new Vector2(segStart, edgePosition - edgeProbe),
+                "east" => new Vector2(edgePosition + edgeProbe, segStart),
+                "west" => new Vector2(edgePosition - edgeProbe, segStart),
+                _ => new Vector2(segStart, edgePosition + edgeProbe)
+            };
+
+            if (areaManager.ContainsTrackArea(startPoint))
+                return true;
+
+            var endPoint = edge switch
+            {
+                "north" => new Vector2(segEnd, edgePosition + edgeProbe),
+                "south" => new Vector2(segEnd, edgePosition - edgeProbe),
+                "east" => new Vector2(edgePosition + edgeProbe, segEnd),
+                "west" => new Vector2(edgePosition - edgeProbe, segEnd),
+                _ => new Vector2(segEnd, edgePosition + edgeProbe)
+            };
+
+            return areaManager.ContainsTrackArea(endPoint);
+        }
+
+        private static void AddWallRun(
+            TrackMap map,
+            Dictionary<string, ShapeDefinition> shapesById,
+            TrackAreaDefinition area,
+            string edge,
+            float runStart,
+            float runEnd,
+            float edgePosition,
+            float wallWidth,
+            TrackWallMaterial material,
+            TrackWallCollisionMode collision)
+        {
+            var runLength = runEnd - runStart;
+            if (runLength <= 0.01f)
+                return;
+
+            switch (edge)
+            {
+                case "north":
+                    AddWallEdge(map, shapesById, area, edge, runStart, edgePosition, runLength, wallWidth, material, collision);
+                    break;
+                case "south":
+                    AddWallEdge(map, shapesById, area, edge, runStart, edgePosition - wallWidth, runLength, wallWidth, material, collision);
+                    break;
+                case "east":
+                    AddWallEdge(map, shapesById, area, edge, edgePosition, runStart, wallWidth, runLength, material, collision);
+                    break;
+                case "west":
+                    AddWallEdge(map, shapesById, area, edge, edgePosition - wallWidth, runStart, wallWidth, runLength, material, collision);
+                    break;
+            }
+        }
+
+        [Flags]
+        private enum WallEdges
+        {
+            None = 0,
+            North = 1 << 0,
+            South = 1 << 1,
+            East = 1 << 2,
+            West = 1 << 3,
+            All = North | South | East | West
+        }
+
+        private static WallEdges ParseWallEdges(IReadOnlyDictionary<string, string> metadata)
+        {
+            if (!TryGetMetadataValue(metadata, out var raw, "wall_edges", "wall_sides", "walls", "edges"))
+                return WallEdges.All;
+
+            var trimmed = raw.Trim().ToLowerInvariant();
+            if (trimmed == "none" || trimmed == "off")
+                return WallEdges.None;
+            if (trimmed == "all" || trimmed == "every")
+                return WallEdges.All;
+
+            var edges = WallEdges.None;
+            var tokens = trimmed.Split(new[] { ',', '|', ';', ' ' }, StringSplitOptions.RemoveEmptyEntries);
+            foreach (var token in tokens)
+            {
+                switch (token)
+                {
+                    case "n":
+                    case "north":
+                    case "top":
+                        edges |= WallEdges.North;
+                        break;
+                    case "s":
+                    case "south":
+                    case "bottom":
+                        edges |= WallEdges.South;
+                        break;
+                    case "e":
+                    case "east":
+                    case "right":
+                        edges |= WallEdges.East;
+                        break;
+                    case "w":
+                    case "west":
+                    case "left":
+                        edges |= WallEdges.West;
+                        break;
+                }
+            }
+            return edges;
+        }
+
+        private static TrackWallMaterial ParseWallMaterial(IReadOnlyDictionary<string, string> metadata)
+        {
+            if (!TryGetMetadataValue(metadata, out var raw, "wall_material", "material"))
+                return TrackWallMaterial.Hard;
+            return Enum.TryParse(raw, true, out TrackWallMaterial material)
+                ? material
+                : TrackWallMaterial.Hard;
+        }
+
+        private static TrackWallCollisionMode ParseWallCollision(IReadOnlyDictionary<string, string> metadata)
+        {
+            if (!TryGetMetadataValue(metadata, out var raw, "wall_collision", "wall_collision_mode", "collision", "collision_mode", "wall_mode"))
+                return TrackWallCollisionMode.Block;
+
+            var trimmed = raw.Trim().ToLowerInvariant();
+            switch (trimmed)
+            {
+                case "bounce":
+                case "rebound":
+                case "reflect":
+                    return TrackWallCollisionMode.Bounce;
+                case "pass":
+                case "ignore":
+                case "none":
+                case "ghost":
+                    return TrackWallCollisionMode.Pass;
+                default:
+                    return TrackWallCollisionMode.Block;
+            }
+        }
+
+        private static void AddWallEdge(
+            TrackMap map,
+            Dictionary<string, ShapeDefinition> shapesById,
+            TrackAreaDefinition area,
+            string edge,
+            float x,
+            float z,
+            float width,
+            float height,
+            TrackWallMaterial material,
+            TrackWallCollisionMode collision)
+        {
+            var shapeBase = $"__auto_wall_{area.Id}_{edge}_shape";
+            var wallBase = $"__auto_wall_{area.Id}_{edge}";
+            var shapeId = shapeBase;
+            var wallId = wallBase;
+            var suffix = 1;
+            while (shapesById.ContainsKey(shapeId))
+            {
+                shapeId = $"{shapeBase}_{suffix}";
+                wallId = $"{wallBase}_{suffix}";
+                suffix++;
+            }
+
+            var wallName = string.IsNullOrWhiteSpace(area.Name) ? null : $"{area.Name} {edge} wall";
+            var shape = new ShapeDefinition(shapeId, ShapeType.Rectangle, x, z, width, height);
+            map.AddShape(shape);
+            map.AddWall(new TrackWallDefinition(wallId, shapeId, 0f, material, collision, wallName));
+            shapesById[shapeId] = shape;
+        }
+
+        private static bool TryGetMetadataBool(IReadOnlyDictionary<string, string> metadata, out bool value, params string[] keys)
+        {
+            value = false;
+            if (!TryGetMetadataValue(metadata, out var raw, keys))
+                return false;
+            if (bool.TryParse(raw, out value))
+                return true;
+            var trimmed = raw.Trim().ToLowerInvariant();
+            if (trimmed == "1" || trimmed == "yes" || trimmed == "y" || trimmed == "on" || trimmed == "true")
+            {
+                value = true;
+                return true;
+            }
+            if (trimmed == "0" || trimmed == "no" || trimmed == "n" || trimmed == "off" || trimmed == "false")
+            {
+                value = false;
+                return true;
+            }
+            return false;
+        }
+
+        private static bool TryGetMetadataFloat(IReadOnlyDictionary<string, string> metadata, out float value, params string[] keys)
+        {
+            value = 0f;
+            if (!TryGetMetadataValue(metadata, out var raw, keys))
+                return false;
+            return float.TryParse(raw, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out value);
+        }
+
+        private static bool TryGetMetadataValue(IReadOnlyDictionary<string, string> metadata, out string value, params string[] keys)
+        {
+            value = string.Empty;
+            if (metadata == null || metadata.Count == 0)
+                return false;
+            foreach (var key in keys)
+            {
+                if (metadata.TryGetValue(key, out var raw) && !string.IsNullOrWhiteSpace(raw))
+                {
+                    value = raw;
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        private static bool HasExplicitSafeZone(TrackMap map)
+        {
+            if (map == null)
+                return false;
+            foreach (var area in map.Areas)
+            {
+                if (area == null)
+                    continue;
+                if (area.Type == TrackAreaType.SafeZone || (area.Flags & TrackAreaFlags.SafeZone) != 0)
+                    return true;
+            }
+            return false;
         }
 
         private static void AddRingShapeArea(
@@ -406,6 +776,137 @@ namespace TopSpeed.Tracks.Map
         private static bool TryParseDegrees(string raw, out float degrees)
         {
             return float.TryParse(raw, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out degrees);
+        }
+
+        private static bool TryGetDrivableBounds(TrackMap map, out float minX, out float minZ, out float maxX, out float maxZ)
+        {
+            minX = 0f;
+            minZ = 0f;
+            maxX = 0f;
+            maxZ = 0f;
+            var hasBounds = false;
+
+            var shapesById = new Dictionary<string, ShapeDefinition>(StringComparer.OrdinalIgnoreCase);
+            foreach (var shape in map.Shapes)
+            {
+                if (shape == null)
+                    continue;
+                shapesById[shape.Id] = shape;
+            }
+
+            var portalsById = new Dictionary<string, PortalDefinition>(StringComparer.OrdinalIgnoreCase);
+            foreach (var portal in map.Portals)
+            {
+                if (portal == null)
+                    continue;
+                portalsById[portal.Id] = portal;
+            }
+
+            var hasDrivableAreas = HasDrivableAreas(map.Areas);
+            if (hasDrivableAreas)
+            {
+                foreach (var area in map.Areas)
+                {
+                    if (area == null || IsOverlayArea(area) || IsNonDrivableArea(area))
+                        continue;
+
+                    if (!shapesById.TryGetValue(area.ShapeId, out var shape))
+                        continue;
+
+                    var expand = area.WidthMeters.GetValueOrDefault();
+                    if (!TryGetShapeBoundsExpanded(shape, expand, out var sMinX, out var sMinZ, out var sMaxX, out var sMaxZ))
+                        continue;
+
+                    MergeBounds(ref hasBounds, ref minX, ref minZ, ref maxX, ref maxZ, sMinX, sMinZ, sMaxX, sMaxZ);
+                }
+
+                return hasBounds;
+            }
+
+            if (hasBounds)
+                return true;
+
+            return TryGetTopologyBounds(map, out minX, out minZ, out maxX, out maxZ);
+        }
+
+        private static bool HasDrivableAreas(IReadOnlyList<TrackAreaDefinition> areas)
+        {
+            if (areas == null || areas.Count == 0)
+                return false;
+            foreach (var area in areas)
+            {
+                if (area == null)
+                    continue;
+                if (IsOverlayArea(area) || IsNonDrivableArea(area))
+                    continue;
+                return true;
+            }
+            return false;
+        }
+
+        private static bool IsOverlayArea(TrackAreaDefinition area)
+        {
+            switch (area.Type)
+            {
+                case TrackAreaType.Start:
+                case TrackAreaType.Finish:
+                case TrackAreaType.Checkpoint:
+                case TrackAreaType.Intersection:
+                    return true;
+                default:
+                    return false;
+            }
+        }
+
+        private static bool IsNonDrivableArea(TrackAreaDefinition area)
+        {
+            return area.Type == TrackAreaType.Boundary || area.Type == TrackAreaType.OffTrack;
+        }
+
+        private static void MergeBounds(
+            ref bool hasBounds,
+            ref float minX,
+            ref float minZ,
+            ref float maxX,
+            ref float maxZ,
+            float sMinX,
+            float sMinZ,
+            float sMaxX,
+            float sMaxZ)
+        {
+            if (!hasBounds)
+            {
+                minX = sMinX;
+                minZ = sMinZ;
+                maxX = sMaxX;
+                maxZ = sMaxZ;
+                hasBounds = true;
+                return;
+            }
+
+            if (sMinX < minX) minX = sMinX;
+            if (sMinZ < minZ) minZ = sMinZ;
+            if (sMaxX > maxX) maxX = sMaxX;
+            if (sMaxZ > maxZ) maxZ = sMaxZ;
+        }
+
+        private static bool TryGetShapeBoundsExpanded(
+            ShapeDefinition shape,
+            float expand,
+            out float minX,
+            out float minZ,
+            out float maxX,
+            out float maxZ)
+        {
+            if (!TryGetShapeBounds(shape, out minX, out minZ, out maxX, out maxZ))
+                return false;
+            if (expand <= 0f)
+                return true;
+            minX -= expand;
+            minZ -= expand;
+            maxX += expand;
+            maxZ += expand;
+            return true;
         }
 
         private static bool TryGetTopologyBounds(TrackMap map, out float minX, out float minZ, out float maxX, out float maxZ)

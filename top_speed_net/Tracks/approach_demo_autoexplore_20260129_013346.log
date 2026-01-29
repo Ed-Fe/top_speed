@@ -1,0 +1,9 @@
+Track: D:\top_speed\top_speed_net\Tracks\approach_demo.tsm
+Timestamp: 2026-01-29 01:33:46
+
+Validation:
+  OK
+
+Auto-explore:
+  Bounds: X 0..250, Z 0..250
+  Step: 1m, Samples: 63001, Drivable: 34540, Reachable: 34540, Unreachable: 0

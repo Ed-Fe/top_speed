@@ -11,6 +11,7 @@ using TopSpeed.Protocol;
 using TopSpeed.Tracks;
 using TopSpeed.Tracks.Geometry;
 using TopSpeed.Tracks.Map;
+using TopSpeed.Tracks.Walls;
 using TS.Audio;
 
 namespace TopSpeed.Vehicles
@@ -627,6 +628,46 @@ namespace TopSpeed.Vehicles
             _soundMiniCrash.Play(loop: false);
         }
 
+        private void HandleWallHit(TrackWallDefinition wall)
+        {
+            if (wall == null)
+                return;
+
+            if (wall.CollisionMode == TrackWallCollisionMode.Bounce)
+            {
+                SoftWallHit();
+                return;
+            }
+
+            if (IsHardWallMaterial(wall.Material))
+                Crash();
+            else
+                SoftWallHit();
+        }
+
+        private void SoftWallHit()
+        {
+            if (_soundMiniCrash == null)
+                return;
+            _soundMiniCrash.SeekToStart();
+            _soundMiniCrash.Play(loop: false);
+        }
+
+        private static bool IsHardWallMaterial(TrackWallMaterial material)
+        {
+            switch (material)
+            {
+                case TrackWallMaterial.Soft:
+                case TrackWallMaterial.Rubber:
+                case TrackWallMaterial.Grass:
+                case TrackWallMaterial.Sand:
+                case TrackWallMaterial.Dirt:
+                    return false;
+                default:
+                    return true;
+            }
+        }
+
         public void Bump(float bumpX, float bumpY, float bumpSpeed)
         {
             if (bumpY != 0)
@@ -934,9 +975,19 @@ namespace TopSpeed.Vehicles
                 var velocity = (forward * _dynamicsState.VelLong) + (right * _dynamicsState.VelLat);
                 var nextPosition = _worldPosition + (velocity * elapsed);
 
-                var canMove = _track.IsWithinTrack(nextPosition);
-                if (canMove && !_track.IsSectorTransitionAllowed(_worldPosition, nextPosition, headingDegrees))
+                var canMove = true;
+                if (_track.TryGetWallCollision(_worldPosition, nextPosition, out var wall))
+                {
+                    HandleWallHit(wall);
                     canMove = false;
+                }
+
+                if (canMove)
+                {
+                    canMove = _track.IsWithinTrack(nextPosition);
+                    if (canMove && !_track.IsSectorTransitionAllowed(_worldPosition, nextPosition, headingDegrees))
+                        canMove = false;
+                }
 
                 if (canMove)
                 {

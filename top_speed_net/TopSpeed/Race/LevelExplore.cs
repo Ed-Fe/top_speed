@@ -13,6 +13,7 @@ using TopSpeed.Tracks.Guidance;
 using TopSpeed.Tracks.Map;
 using TopSpeed.Tracks.Sectors;
 using TopSpeed.Tracks.Topology;
+using TopSpeed.Tracks.Walls;
 using TS.Audio;
 
 namespace TopSpeed.Race
@@ -42,11 +43,11 @@ namespace TopSpeed.Race
         private TrackSectorRuleManager? _sectorRuleManager;
         private TrackBranchManager? _branchManager;
         private TrackPortalManager? _portalManager;
+        private TrackWallManager? _wallManager;
         private TrackApproachBeacon? _approachBeacon;
         private AudioSourceHandle? _soundBeacon;
         private string? _lastApproachPortalId;
         private string? _lastApproachHeading;
-        private TrackPathManager? _pathManager;
         private float _beaconCooldown;
 
         private Vector3 _lastListenerPosition;
@@ -84,7 +85,7 @@ namespace TopSpeed.Race
             _sectorManager = new TrackSectorManager(_map.Sectors, _areaManager, _portalManager);
             _sectorRuleManager = new TrackSectorRuleManager(_map.Sectors, _portalManager);
             _branchManager = _map.BuildBranchManager();
-            _pathManager = _map.BuildPathManager();
+            _wallManager = new TrackWallManager(_map.Shapes, _map.Walls);
             _approachBeacon = new TrackApproachBeacon(_map, ApproachBeaconRangeMeters);
             InitializeBeacon();
             _mapSnapshot = BuildMapSnapshot(_worldPosition, _headingDegrees);
@@ -175,6 +176,11 @@ namespace TopSpeed.Race
         {
             var delta = MapMovement.HeadingVector(headingDegrees) * distanceMeters;
             var nextWorld = _worldPosition + delta;
+            if (TryGetWallCollision(_worldPosition, nextWorld))
+            {
+                _speech.Speak("Wall.");
+                return;
+            }
             if (!IsWithinTrack(nextWorld))
             {
                 _speech.Speak("Track boundary.");
@@ -197,6 +203,47 @@ namespace TopSpeed.Race
             var current = BuildMapSnapshot(nextWorld, _headingDegrees);
             AnnounceMapChanges(previous, current);
             _mapSnapshot = current;
+        }
+
+        private bool TryGetWallCollision(Vector3 fromWorld, Vector3 toWorld)
+        {
+            if (_wallManager == null || !_wallManager.HasWalls)
+                return false;
+
+            var from = new Vector2(fromWorld.X, fromWorld.Z);
+            var to = new Vector2(toWorld.X, toWorld.Z);
+            var delta = to - from;
+            var distance = delta.Length();
+            if (distance <= 0.001f)
+                return false;
+
+            var steps = Math.Max(1, (int)Math.Ceiling(distance / 1.0f));
+            var step = delta / steps;
+            var pos = from;
+            for (var i = 0; i <= steps; i++)
+            {
+                if (TryFindWallAt(pos))
+                    return true;
+                pos += step;
+            }
+
+            return false;
+        }
+
+        private bool TryFindWallAt(Vector2 position)
+        {
+            if (_wallManager == null || !_wallManager.HasWalls)
+                return false;
+            foreach (var candidate in _wallManager.Walls)
+            {
+                if (candidate == null)
+                    continue;
+                if (candidate.CollisionMode == TrackWallCollisionMode.Pass)
+                    continue;
+                if (_wallManager.Contains(candidate, position))
+                    return true;
+            }
+            return false;
         }
 
         private void UpdateAudioListener(float elapsed)
@@ -225,11 +272,9 @@ namespace TopSpeed.Race
                 Noise = _map.DefaultNoise,
                 WidthMeters = Math.Max(0.5f, _map.DefaultWidthMeters),
                 IsSafeZone = IsSafeZone(position2D),
-                Zone = string.Empty,
-                IsOnPath = _pathManager != null && _pathManager.HasPaths && _pathManager.ContainsAny(position2D)
+                Zone = string.Empty
             };
 
-            ApplyPathWidthSnapshot(position2D, ref snapshot.WidthMeters);
             ApplyAreaSnapshotOverrides(position2D, headingDegrees, ref snapshot);
             ApplySectorSnapshotOverrides(position2D, headingDegrees, ref snapshot);
             return snapshot;
@@ -410,20 +455,6 @@ namespace TopSpeed.Race
             }
         }
 
-        private void ApplyPathWidthSnapshot(Vector2 position, ref float widthMeters)
-        {
-            if (_pathManager == null || !_pathManager.HasPaths)
-                return;
-
-            var paths = _pathManager.FindPathsContaining(position);
-            if (paths.Count == 0)
-                return;
-
-            var path = paths[paths.Count - 1];
-            if (path.WidthMeters > 0f)
-                widthMeters = Math.Max(0.5f, path.WidthMeters);
-        }
-
         private void InitializeBeacon()
         {
             var path = Path.Combine(AssetPaths.SoundsRoot, "Legacy", "beacon.wav");
@@ -480,19 +511,13 @@ namespace TopSpeed.Race
             var position = new Vector2(worldPosition.X, worldPosition.Z);
             var safeZone = IsSafeZone(position);
 
-            if (_pathManager != null && _pathManager.HasPaths)
-            {
-                if (_pathManager.ContainsAny(position))
-                    return true;
-                if (_areaManager != null && _areaManager.ContainsTrackArea(position))
-                    return true;
-                return safeZone && !IsBlockedBySectorRules(position);
-            }
-
             if (_areaManager != null && _areaManager.ContainsTrackArea(position))
                 return true;
 
-            return !IsBlockedBySectorRules(position);
+            if (safeZone)
+                return !IsBlockedBySectorRules(position);
+
+            return false;
         }
 
         private bool IsBlockedBySectorRules(Vector2 position)
@@ -805,7 +830,6 @@ namespace TopSpeed.Race
             public float WidthMeters;
             public bool IsSafeZone;
             public string Zone;
-            public bool IsOnPath;
             public string SectorId;
             public TrackSectorType SectorType;
             public bool IsIntersection;

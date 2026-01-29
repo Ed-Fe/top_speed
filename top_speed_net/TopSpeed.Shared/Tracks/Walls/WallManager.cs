@@ -1,133 +1,145 @@
 using System;
 using System.Collections.Generic;
 using System.Numerics;
+using TopSpeed.Tracks.Topology;
 
-namespace TopSpeed.Tracks.Topology
+namespace TopSpeed.Tracks.Walls
 {
-    public sealed class TrackPathInstance
+    public sealed class TrackWallManager
     {
-        public TrackPathInstance(PathDefinition definition, ShapeDefinition shape, float widthMeters)
+        private readonly Dictionary<string, ShapeDefinition> _shapes;
+        private readonly List<TrackWallDefinition> _walls;
+
+        public TrackWallManager(IEnumerable<ShapeDefinition> shapes, IEnumerable<TrackWallDefinition> walls)
         {
-            Definition = definition ?? throw new ArgumentNullException(nameof(definition));
-            Shape = shape ?? throw new ArgumentNullException(nameof(shape));
-            WidthMeters = widthMeters;
-        }
+            _shapes = new Dictionary<string, ShapeDefinition>(StringComparer.OrdinalIgnoreCase);
+            _walls = new List<TrackWallDefinition>();
 
-        public PathDefinition Definition { get; }
-        public ShapeDefinition Shape { get; }
-        public float WidthMeters { get; }
-    }
-
-    public sealed class TrackPathManager
-    {
-        private readonly List<TrackPathInstance> _paths = new List<TrackPathInstance>();
-
-        public TrackPathManager(
-            IEnumerable<PathDefinition> paths,
-            IEnumerable<ShapeDefinition> shapes,
-            TrackPortalManager portalManager,
-            float defaultWidthMeters)
-        {
-            if (portalManager == null)
-                throw new ArgumentNullException(nameof(portalManager));
-
-            var shapeLookup = new Dictionary<string, ShapeDefinition>(StringComparer.OrdinalIgnoreCase);
             if (shapes != null)
             {
                 foreach (var shape in shapes)
                 {
                     if (shape == null)
                         continue;
-                    shapeLookup[shape.Id] = shape;
+                    _shapes[shape.Id] = shape;
                 }
             }
 
-            if (paths == null)
-                return;
-
-            foreach (var path in paths)
+            if (walls != null)
             {
-                if (path == null)
-                    continue;
-
-                var width = path.WidthMeters > 0f ? path.WidthMeters : Math.Max(0.5f, defaultWidthMeters);
-                if (!string.IsNullOrWhiteSpace(path.ShapeId) && shapeLookup.TryGetValue(path.ShapeId!, out var shape))
+                foreach (var wall in walls)
                 {
-                    _paths.Add(new TrackPathInstance(path, shape, width));
-                    continue;
-                }
-
-                if (!string.IsNullOrWhiteSpace(path.FromPortalId) &&
-                    !string.IsNullOrWhiteSpace(path.ToPortalId) &&
-                    portalManager.TryGetPortal(path.FromPortalId!, out var fromPortal) &&
-                    portalManager.TryGetPortal(path.ToPortalId!, out var toPortal))
-                {
-                    var points = new List<Vector2>
-                    {
-                        new Vector2(fromPortal.X, fromPortal.Z),
-                        new Vector2(toPortal.X, toPortal.Z)
-                    };
-                    var shapeId = $"{path.Id}_auto";
-                    var autoShape = new ShapeDefinition(shapeId, ShapeType.Polyline, points: points);
-                    _paths.Add(new TrackPathInstance(path, autoShape, width));
+                    if (wall == null)
+                        continue;
+                    _walls.Add(wall);
                 }
             }
         }
 
-        public IReadOnlyList<TrackPathInstance> Paths => _paths;
+        public bool HasWalls => _walls.Count > 0;
+        public IReadOnlyList<TrackWallDefinition> Walls => _walls;
 
-        public bool HasPaths => _paths.Count > 0;
-
-        public IReadOnlyList<TrackPathInstance> FindPathsContaining(Vector2 position)
+        public bool TryGetWall(string id, out TrackWallDefinition wall)
         {
-            if (_paths.Count == 0)
-                return Array.Empty<TrackPathInstance>();
-
-            var hits = new List<TrackPathInstance>();
-            foreach (var path in _paths)
+            wall = null!;
+            if (string.IsNullOrWhiteSpace(id))
+                return false;
+            foreach (var candidate in _walls)
             {
-                if (Contains(path, position))
-                    hits.Add(path);
+                if (candidate != null && string.Equals(candidate.Id, id.Trim(), StringComparison.OrdinalIgnoreCase))
+                {
+                    wall = candidate;
+                    return true;
+                }
             }
-            return hits;
+            return false;
         }
 
         public bool ContainsAny(Vector2 position)
         {
-            foreach (var path in _paths)
+            if (_walls.Count == 0)
+                return false;
+            foreach (var wall in _walls)
             {
-                if (Contains(path, position))
+                if (Contains(wall, position))
                     return true;
             }
             return false;
         }
 
-        private static bool Contains(TrackPathInstance path, Vector2 position)
+        public bool TryFindCollision(Vector2 from, Vector2 to, out TrackWallDefinition wall)
         {
-            if (path == null || path.Shape == null)
+            wall = null!;
+            if (_walls.Count == 0)
                 return false;
 
-            var shape = path.Shape;
-            var width = Math.Abs(path.WidthMeters);
+            if (TryFindCollisionAtPoint(from, out wall) || TryFindCollisionAtPoint(to, out wall))
+                return true;
 
+            var delta = to - from;
+            var distance = delta.Length();
+            if (distance <= 0.001f)
+                return false;
+
+            var steps = Math.Max(1, (int)Math.Ceiling(distance / 1.0f));
+            var step = delta / steps;
+            var position = from;
+            for (var i = 0; i <= steps; i++)
+            {
+                if (TryFindCollisionAtPoint(position, out wall))
+                    return true;
+                position += step;
+            }
+
+            return false;
+        }
+
+        private bool TryFindCollisionAtPoint(Vector2 position, out TrackWallDefinition wall)
+        {
+            wall = null!;
+            foreach (var candidate in _walls)
+            {
+                if (Contains(candidate, position))
+                {
+                    wall = candidate;
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        public bool Contains(TrackWallDefinition wall, Vector2 position)
+        {
+            if (wall == null)
+                return false;
+            if (!_shapes.TryGetValue(wall.ShapeId, out var shape))
+                return false;
+            var width = wall.WidthMeters;
+            return Contains(shape, position, width);
+        }
+
+        private static bool Contains(ShapeDefinition shape, Vector2 position, float widthMeters)
+        {
+            if (shape == null)
+                return false;
             switch (shape.Type)
             {
                 case ShapeType.Rectangle:
-                    return width > 0f
-                        ? ContainsRectanglePath(shape, position, width)
+                    return widthMeters > 0f
+                        ? ContainsRectanglePath(shape, position, widthMeters)
                         : ContainsRectangle(shape, position);
                 case ShapeType.Circle:
-                    return width > 0f
-                        ? ContainsCirclePath(shape, position, width)
+                    return widthMeters > 0f
+                        ? ContainsCirclePath(shape, position, widthMeters)
                         : ContainsCircle(shape, position);
                 case ShapeType.Ring:
-                    return width > 0f
-                        ? ContainsRingPath(shape, position, width)
+                    return widthMeters > 0f
+                        ? ContainsRingPath(shape, position, widthMeters)
                         : ContainsRing(shape, position);
                 case ShapeType.Polygon:
-                    return ContainsPolygonPath(shape.Points, position, width, path.Definition);
+                    return ContainsPolygonPath(shape.Points, position, widthMeters);
                 case ShapeType.Polyline:
-                    return ContainsPolylinePath(shape.Points, position, width, path.Definition);
+                    return ContainsPolylinePath(shape.Points, position, widthMeters);
                 default:
                     return false;
             }
@@ -269,11 +281,7 @@ namespace TopSpeed.Tracks.Topology
             return inside;
         }
 
-        private static bool ContainsPolygonPath(
-            IReadOnlyList<Vector2> points,
-            Vector2 position,
-            float widthMeters,
-            PathDefinition? definition)
+        private static bool ContainsPolygonPath(IReadOnlyList<Vector2> points, Vector2 position, float widthMeters)
         {
             if (points == null || points.Count < 3)
                 return false;
@@ -282,23 +290,12 @@ namespace TopSpeed.Tracks.Topology
             if (width <= 0f)
                 return ContainsPolygon(points, position);
 
-            var centered = IsCenteredClosedWidth(definition);
-            if (centered)
-            {
-                var radius = width * 0.5f;
-                return DistanceToPolylineSquared(points, position, true) <= (radius * radius);
-            }
-
             if (!ContainsPolygon(points, position))
                 return false;
             return DistanceToPolylineSquared(points, position, true) <= (width * width);
         }
 
-        private static bool ContainsPolylinePath(
-            IReadOnlyList<Vector2> points,
-            Vector2 position,
-            float widthMeters,
-            PathDefinition? definition)
+        private static bool ContainsPolylinePath(IReadOnlyList<Vector2> points, Vector2 position, float widthMeters)
         {
             if (points == null || points.Count < 2)
                 return false;
@@ -307,42 +304,8 @@ namespace TopSpeed.Tracks.Topology
             if (width <= 0f)
                 return false;
 
-            var closed = IsClosedPolyline(points);
-            if (!closed)
-            {
-                var radius = width * 0.5f;
-                return DistanceToPolylineSquared(points, position, false) <= (radius * radius);
-            }
-
-            var centered = IsCenteredClosedWidth(definition);
-            if (centered)
-            {
-                var radius = width * 0.5f;
-                return DistanceToPolylineSquared(points, position, true) <= (radius * radius);
-            }
-
-            if (!ContainsPolygon(points, position))
-                return false;
-            return DistanceToPolylineSquared(points, position, true) <= (width * width);
-        }
-
-        private static float DistanceToSegmentSquared(Vector2 a, Vector2 b, Vector2 p)
-        {
-            var ab = b - a;
-            var ap = p - a;
-            var abLenSq = Vector2.Dot(ab, ab);
-            if (abLenSq <= float.Epsilon)
-                return Vector2.Dot(ap, ap);
-
-            var t = Vector2.Dot(ap, ab) / abLenSq;
-            if (t < 0f)
-                t = 0f;
-            else if (t > 1f)
-                t = 1f;
-
-            var closest = a + ab * t;
-            var delta = p - closest;
-            return Vector2.Dot(delta, delta);
+            var radius = width * 0.5f;
+            return DistanceToPolylineSquared(points, position, false) <= (radius * radius);
         }
 
         private static float DistanceToPolylineSquared(IReadOnlyList<Vector2> points, Vector2 position, bool closed)
@@ -350,10 +313,9 @@ namespace TopSpeed.Tracks.Topology
             if (points == null || points.Count < 2)
                 return float.MaxValue;
 
-            var count = points.Count;
-            var lastIndex = count - 1;
-            var lastEqualsFirst = count > 1 && Vector2.DistanceSquared(points[0], points[lastIndex]) <= 0.0001f;
-            var segmentCount = lastEqualsFirst ? lastIndex : count - 1;
+            var segmentCount = points.Count - 1;
+            var lastIndex = points.Count - 1;
+            var lastEqualsFirst = Vector2.DistanceSquared(points[0], points[lastIndex]) <= 0.0001f;
 
             var best = float.MaxValue;
             for (var i = 0; i < segmentCount; i++)
@@ -375,47 +337,21 @@ namespace TopSpeed.Tracks.Topology
             return best;
         }
 
-        private static bool IsClosedPolyline(IReadOnlyList<Vector2> points)
+        private static float DistanceToSegmentSquared(Vector2 a, Vector2 b, Vector2 p)
         {
-            if (points == null || points.Count < 3)
-                return false;
-            return Vector2.DistanceSquared(points[0], points[points.Count - 1]) <= 0.0001f;
-        }
+            var ab = b - a;
+            var ap = p - a;
+            var abLenSq = Vector2.Dot(ab, ab);
+            if (abLenSq <= float.Epsilon)
+                return Vector2.Dot(ap, ap);
 
-        private static bool IsCenteredClosedWidth(PathDefinition? definition)
-        {
-            if (definition?.Metadata == null || definition.Metadata.Count == 0)
-                return false;
-
-            if (!TryGetMetadataValue(definition.Metadata, out var mode, "width_mode", "path_width_mode", "width_align", "width_alignment"))
-                return false;
-
-            var trimmed = mode.Trim().ToLowerInvariant();
-            return trimmed.Contains("center") ||
-                   trimmed.Contains("centre") ||
-                   trimmed.Contains("both") ||
-                   trimmed.Contains("sym");
-        }
-
-        private static bool TryGetMetadataValue(
-            IReadOnlyDictionary<string, string> metadata,
-            out string value,
-            params string[] keys)
-        {
-            value = string.Empty;
-            if (metadata == null || metadata.Count == 0)
-                return false;
-
-            foreach (var key in keys)
-            {
-                if (metadata.TryGetValue(key, out var raw) && !string.IsNullOrWhiteSpace(raw))
-                {
-                    value = raw;
-                    return true;
-                }
-            }
-
-            return false;
+            var t = Vector2.Dot(ap, ab) / abLenSq;
+            if (t <= 0f)
+                return Vector2.Dot(ap, ap);
+            if (t >= 1f)
+                return Vector2.DistanceSquared(p, b);
+            var projection = a + ab * t;
+            return Vector2.DistanceSquared(p, projection);
         }
     }
 }
