@@ -110,7 +110,8 @@ namespace TopSpeed.Tracks.Acoustics
 
                 IPL.StaticMeshAdd(mesh, scene);
                 IPL.SceneCommit(scene);
-                return new TrackSteamAudioScene(scene, mesh);
+                var hasBaked = TryBakeReflections(scene, context, vertexArray, out var probeBatch, out var bakedIdentifier);
+                return new TrackSteamAudioScene(scene, mesh, probeBatch, bakedIdentifier, hasBaked);
             }
             finally
             {
@@ -123,6 +124,159 @@ namespace TopSpeed.Tracks.Acoustics
                 if (verticesHandle.IsAllocated)
                     verticesHandle.Free();
             }
+        }
+
+        private static bool TryBakeReflections(
+            IPL.Scene scene,
+            SteamAudioContext context,
+            IPL.Vector3[] vertices,
+            out IPL.ProbeBatch probeBatch,
+            out IPL.BakedDataIdentifier bakedIdentifier)
+        {
+            probeBatch = default;
+            bakedIdentifier = default;
+
+            if (vertices == null || vertices.Length == 0)
+                return false;
+
+            var bounds = ComputeBounds(vertices);
+            if (bounds.Max.X <= bounds.Min.X || bounds.Max.Z <= bounds.Min.Z)
+                return false;
+
+            var probeArray = default(IPL.ProbeArray);
+            var probeArrayError = IPL.ProbeArrayCreate(context.Context, out probeArray);
+            if (probeArrayError != IPL.Error.Success)
+                return false;
+
+            try
+            {
+                using (context.AcquireSimulationLock())
+                {
+                    var spacing = 20f;
+                    var height = 1.5f;
+                    var transform = CreateBoundsTransform(bounds.Min, bounds.Max);
+
+                    var genParams = new IPL.ProbeGenerationParams
+                    {
+                        Type = IPL.ProbeGenerationType.UniformFloor,
+                        Spacing = spacing,
+                        Height = height,
+                        Transform = transform
+                    };
+
+                    IPL.ProbeArrayGenerateProbes(probeArray, scene, ref genParams);
+                    if (IPL.ProbeArrayGetNumProbes(probeArray) <= 0)
+                        return false;
+
+                    var batchError = IPL.ProbeBatchCreate(context.Context, out probeBatch);
+                    if (batchError != IPL.Error.Success)
+                        return false;
+
+                    IPL.ProbeBatchAddProbeArray(probeBatch, probeArray);
+                    IPL.ProbeBatchCommit(probeBatch);
+
+                    var center = new IPL.Vector3
+                    {
+                        X = (bounds.Min.X + bounds.Max.X) * 0.5f,
+                        Y = (bounds.Min.Y + bounds.Max.Y) * 0.5f,
+                        Z = (bounds.Min.Z + bounds.Max.Z) * 0.5f
+                    };
+                    var radius = Math.Max(bounds.Max.X - bounds.Min.X, bounds.Max.Z - bounds.Min.Z);
+                    radius = Math.Max(radius, bounds.Max.Y - bounds.Min.Y);
+                    radius = Math.Max(radius, 10f);
+
+                    bakedIdentifier = new IPL.BakedDataIdentifier
+                    {
+                        Type = IPL.BakedDataType.Reflections,
+                        Variation = IPL.BakedDataVariation.Reverb,
+                        EndpointInfluence = new IPL.Sphere
+                        {
+                            Center = center,
+                            Radius = radius
+                        }
+                    };
+
+                    var bakeParams = new IPL.ReflectionsBakeParams
+                    {
+                        Scene = scene,
+                        ProbeBatch = probeBatch,
+                        SceneType = IPL.SceneType.Default,
+                        Identifier = bakedIdentifier,
+                        BakeFlags = IPL.ReflectionsBakeFlags.BakeConvolution | IPL.ReflectionsBakeFlags.BakeParametric,
+                        NumRays = 2048,
+                        NumDiffuseSamples = 256,
+                        NumBounces = 4,
+                        SimulatedDuration = context.ReflectionDurationSeconds,
+                        SavedDuration = context.ReflectionDurationSeconds,
+                        Order = context.ReflectionOrder,
+                        NumThreads = Math.Max(1, Environment.ProcessorCount - 1),
+                        RayBatchSize = 64,
+                        IrradianceMinDistance = 1.0f,
+                        BakeBatchSize = 16,
+                        OpenCLDevice = default,
+                        RadeonRaysDevice = default
+                    };
+
+                    IPL.ReflectionsBakerBake(context.Context, ref bakeParams, null, IntPtr.Zero);
+                    return true;
+                }
+            }
+            catch
+            {
+                if (probeBatch.Handle != IntPtr.Zero)
+                    IPL.ProbeBatchRelease(ref probeBatch);
+                return false;
+            }
+            finally
+            {
+                if (probeArray.Handle != IntPtr.Zero)
+                    IPL.ProbeArrayRelease(ref probeArray);
+            }
+        }
+
+        private static (IPL.Vector3 Min, IPL.Vector3 Max) ComputeBounds(IReadOnlyList<IPL.Vector3> vertices)
+        {
+            var min = new IPL.Vector3 { X = float.MaxValue, Y = float.MaxValue, Z = float.MaxValue };
+            var max = new IPL.Vector3 { X = float.MinValue, Y = float.MinValue, Z = float.MinValue };
+
+            for (int i = 0; i < vertices.Count; i++)
+            {
+                var v = vertices[i];
+                if (v.X < min.X) min.X = v.X;
+                if (v.Y < min.Y) min.Y = v.Y;
+                if (v.Z < min.Z) min.Z = v.Z;
+                if (v.X > max.X) max.X = v.X;
+                if (v.Y > max.Y) max.Y = v.Y;
+                if (v.Z > max.Z) max.Z = v.Z;
+            }
+
+            return (min, max);
+        }
+
+        private static unsafe IPL.Matrix4x4 CreateBoundsTransform(in IPL.Vector3 min, in IPL.Vector3 max)
+        {
+            var scaleX = max.X - min.X;
+            var scaleY = max.Y - min.Y;
+            var scaleZ = max.Z - min.Z;
+
+            IPL.Matrix4x4 matrix = default;
+            matrix.Elements[0] = scaleX;
+            matrix.Elements[1] = 0f;
+            matrix.Elements[2] = 0f;
+            matrix.Elements[3] = min.X;
+            matrix.Elements[4] = 0f;
+            matrix.Elements[5] = scaleY <= 0f ? 1f : scaleY;
+            matrix.Elements[6] = 0f;
+            matrix.Elements[7] = min.Y;
+            matrix.Elements[8] = 0f;
+            matrix.Elements[9] = 0f;
+            matrix.Elements[10] = scaleZ;
+            matrix.Elements[11] = min.Z;
+            matrix.Elements[12] = 0f;
+            matrix.Elements[13] = 0f;
+            matrix.Elements[14] = 0f;
+            matrix.Elements[15] = 1f;
+            return matrix;
         }
 
         private static bool IsOverlayArea(TrackAreaDefinition area)

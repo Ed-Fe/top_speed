@@ -318,6 +318,16 @@ namespace TopSpeed.Vehicles
             _soundBrake = CreateRequiredSound(definition.GetSoundPath(VehicleAction.Brake), looped: true);
             _soundBackfire = TryCreateSound(definition.GetSoundPath(VehicleAction.Backfire));
 
+            _soundEngine.SetUseReflections(true);
+            _soundEngine.SetUseBakedReflections(true);
+            _soundHorn.SetUseReflections(true);
+            _soundHorn.SetUseBakedReflections(true);
+            if (_soundThrottle != null)
+            {
+                _soundThrottle.SetUseReflections(true);
+                _soundThrottle.SetUseBakedReflections(true);
+            }
+
             if (definition.HasWipers == 1)
                 _hasWipers = 1;
 

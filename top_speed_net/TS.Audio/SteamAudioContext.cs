@@ -37,8 +37,15 @@ namespace TS.Audio
         internal ListenerState ListenerSnapshot => _listenerState;
         private IPL.Simulator _simulator;
         private IPL.Scene _scene;
+        private IPL.ProbeBatch _probeBatch;
+        private IPL.BakedDataIdentifier _bakedIdentifier;
+        private bool _hasBakedReflections;
         private readonly Dictionary<AudioSourceHandle, IPL.Source> _sources = new Dictionary<AudioSourceHandle, IPL.Source>();
         private readonly object _simLock = new object();
+        public IDisposable AcquireSimulationLock()
+        {
+            return new SimulationLock(_simLock);
+        }
 
         public SteamAudioContext(int sampleRate, int frameSize, string? hrtfSofaPath)
         {
@@ -46,7 +53,7 @@ namespace TS.Audio
             FrameSize = frameSize;
             ReflectionOrder = 1;
             ReflectionChannels = (ReflectionOrder + 1) * (ReflectionOrder + 1);
-            ReflectionDurationSeconds = 1.5f;
+            ReflectionDurationSeconds = 0.4f;
             ReflectionIrSize = Math.Max(1, (int)Math.Ceiling(ReflectionDurationSeconds * SampleRate));
             ReflectionType = IPL.ReflectionEffectType.Hybrid;
             _listenerState = CreateIdentityState();
@@ -94,6 +101,26 @@ namespace TS.Audio
 
         public void SetScene(IPL.Scene scene)
         {
+            SetScene(scene, default, default, hasBakedReflections: false);
+        }
+
+        private sealed class SimulationLock : IDisposable
+        {
+            private readonly object _lock;
+            public SimulationLock(object simLock)
+            {
+                _lock = simLock;
+                Monitor.Enter(_lock);
+            }
+
+            public void Dispose()
+            {
+                Monitor.Exit(_lock);
+            }
+        }
+
+        public void SetScene(IPL.Scene scene, IPL.ProbeBatch probeBatch, in IPL.BakedDataIdentifier bakedIdentifier, bool hasBakedReflections)
+        {
             if (scene.Handle == IntPtr.Zero || Context.Handle == IntPtr.Zero)
                 return;
 
@@ -102,10 +129,23 @@ namespace TS.Audio
                 if (_simulator.Handle == IntPtr.Zero)
                     CreateSimulator();
 
+                if (_probeBatch.Handle != IntPtr.Zero && _simulator.Handle != IntPtr.Zero)
+                {
+                    IPL.SimulatorRemoveProbeBatch(_simulator, _probeBatch);
+                }
+
                 _scene = scene;
+                _probeBatch = probeBatch;
+                _bakedIdentifier = bakedIdentifier;
+                _hasBakedReflections = hasBakedReflections && _probeBatch.Handle != IntPtr.Zero;
+
                 if (_simulator.Handle != IntPtr.Zero)
                 {
                     IPL.SimulatorSetScene(_simulator, scene);
+                    if (_hasBakedReflections)
+                    {
+                        IPL.SimulatorAddProbeBatch(_simulator, _probeBatch);
+                    }
                     IPL.SimulatorCommit(_simulator);
                 }
             }
@@ -121,6 +161,7 @@ namespace TS.Audio
             lock (_simLock)
             {
                 var active = new HashSet<AudioSourceHandle>();
+                var runReflections = false;
                 foreach (var source in sources)
                 {
                     if (source == null || !source.IsSpatialized || !source.UsesSteamAudio)
@@ -128,24 +169,33 @@ namespace TS.Audio
                     active.Add(source);
                     EnsureSource(source);
                     SetSourceInputs(source);
+                    if (source.UseReflections)
+                        runReflections = true;
                 }
 
                 RemoveInactiveSources(active);
 
                 var shared = BuildSharedInputs();
-                var flags = IPL.SimulationFlags.Direct | IPL.SimulationFlags.Reflections;
+                var flags = runReflections
+                    ? (IPL.SimulationFlags.Direct | IPL.SimulationFlags.Reflections)
+                    : IPL.SimulationFlags.Direct;
                 IPL.SimulatorSetSharedInputs(_simulator, flags, in shared);
                 IPL.SimulatorCommit(_simulator);
                 IPL.SimulatorRunDirect(_simulator);
-                IPL.SimulatorRunReflections(_simulator);
+                if (runReflections)
+                    IPL.SimulatorRunReflections(_simulator);
 
                 foreach (var source in active)
                 {
                     if (!_sources.TryGetValue(source, out var simSource) || simSource.Handle == IntPtr.Zero)
                         continue;
-                    IPL.SourceGetOutputs(simSource, flags, out var outputs);
+                    var sourceFlags = source.UseReflections
+                        ? (IPL.SimulationFlags.Direct | IPL.SimulationFlags.Reflections)
+                        : IPL.SimulationFlags.Direct;
+                    IPL.SourceGetOutputs(simSource, sourceFlags, out var outputs);
                     ApplyDirectOutputs(source, in outputs.Direct);
-                    ApplyReflectionOutputs(source, in outputs.Reflections);
+                    if (source.UseReflections)
+                        ApplyReflectionOutputs(source, in outputs.Reflections);
                 }
             }
         }
@@ -183,6 +233,10 @@ namespace TS.Audio
 
                 if (_simulator.Handle != IntPtr.Zero)
                 {
+                    if (_probeBatch.Handle != IntPtr.Zero)
+                    {
+                        IPL.SimulatorRemoveProbeBatch(_simulator, _probeBatch);
+                    }
                     IPL.SimulatorRelease(ref _simulator);
                     _simulator = default;
                 }
@@ -293,9 +347,10 @@ namespace TS.Audio
                 Ahead = new IPL.Vector3 { X = 0f, Y = 0f, Z = 1f }
             };
 
+            var useReflections = handle.UseReflections;
             var inputs = new IPL.SimulationInputs
             {
-                Flags = IPL.SimulationFlags.Direct | IPL.SimulationFlags.Reflections,
+                Flags = useReflections ? (IPL.SimulationFlags.Direct | IPL.SimulationFlags.Reflections) : IPL.SimulationFlags.Direct,
                 DirectFlags = IPL.DirectSimulationFlags.Occlusion | IPL.DirectSimulationFlags.Transmission | IPL.DirectSimulationFlags.AirAbsorption,
                 Source = coord,
                 DistanceAttenuationModel = new IPL.DistanceAttenuationModel { Type = IPL.DistanceAttenuationModelType.Default, MinDistance = 1.0f },
@@ -307,8 +362,13 @@ namespace TS.Audio
                 HybridReverbTransitionTime = 1.0f,
                 HybridReverbOverlapPercent = 0.25f,
                 NumTransmissionRays = 4,
-                Baked = false
+                Baked = useReflections && _hasBakedReflections && handle.UseBakedReflections
             };
+
+            if (inputs.Baked)
+            {
+                inputs.BakedDataIdentifier = _bakedIdentifier;
+            }
 
             unsafe
             {

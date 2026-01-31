@@ -81,6 +81,8 @@ namespace TS.Audio
         private IDisposable? _userData;
         private int _channels = 2;
         private int _sampleRate = 44100;
+        private volatile bool _useReflections;
+        private volatile bool _useBakedReflections;
         private ma_sound_end_proc? _endCallback;
         private GCHandle _endHandle;
         private Action? _onEnd;
@@ -322,6 +324,20 @@ namespace TS.Audio
             Volatile.Write(ref _spatial.ReflectionWet, wet);
         }
 
+        public void SetUseReflections(bool enabled)
+        {
+            _useReflections = enabled;
+            if (!enabled)
+                _useBakedReflections = false;
+        }
+
+        public void SetUseBakedReflections(bool enabled)
+        {
+            _useBakedReflections = enabled;
+            if (enabled)
+                _useReflections = true;
+        }
+
         public void SetRoomAcoustics(RoomAcoustics acoustics)
         {
             Volatile.Write(ref _spatial.RoomFlags, acoustics.HasRoom ? AudioSourceSpatialParams.RoomHasProfile : 0);
@@ -392,6 +408,8 @@ namespace TS.Audio
         internal bool UsesSteamAudio => _useHrtf;
         internal bool IsSpatialized => _spatialize;
         internal AudioSourceSpatialParams SpatialParams => _spatial;
+        internal bool UseReflections => _useReflections;
+        internal bool UseBakedReflections => _useBakedReflections;
 
         public float GetLengthSeconds()
         {

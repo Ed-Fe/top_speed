@@ -1110,6 +1110,11 @@ namespace TopSpeed.Tracks.Map
             _soundHelicopter = CreateLoop(root, "helicopter.wav");
             _soundOwl = CreateLoop(root, "owl.wav");
             _soundBeacon = CreateSpatial(root, "beacon.wav");
+            if (_soundBeacon != null)
+            {
+                _soundBeacon.SetUseReflections(true);
+                _soundBeacon.SetUseBakedReflections(true);
+            }
         }
 
         private void InitializeSteamAudioScene()
@@ -1122,7 +1127,7 @@ namespace TopSpeed.Tracks.Map
             {
                 _steamAudioScene = SteamAudioSceneBuilder.Build(_map, steam);
                 if (_steamAudioScene != null)
-                    steam.SetScene(_steamAudioScene.Scene);
+                    steam.SetScene(_steamAudioScene.Scene, _steamAudioScene.ProbeBatch, _steamAudioScene.BakedIdentifier, _steamAudioScene.HasBakedReflections);
             }
             catch (Exception ex)
             {

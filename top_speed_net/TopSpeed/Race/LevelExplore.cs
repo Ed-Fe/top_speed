@@ -619,6 +619,11 @@ namespace TopSpeed.Race
             if (!File.Exists(path))
                 return;
             _soundBeacon = _audio.CreateSpatialSource(path, streamFromDisk: true, allowHrtf: true);
+            if (_soundBeacon != null)
+            {
+                _soundBeacon.SetUseReflections(true);
+                _soundBeacon.SetUseBakedReflections(true);
+            }
         }
 
         private void UpdateApproachGuidance(float elapsed)
