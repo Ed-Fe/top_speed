@@ -13,6 +13,7 @@ namespace TS.Audio
         private IPL.BinauralEffect _binauralLeft;
         private IPL.BinauralEffect _binauralRight;
         private IPL.AmbisonicsBinauralEffect _ambisonicsBinaural;
+        private IPL.AmbisonicsRotationEffect _ambisonicsRotation;
         private IPL.DirectEffect _directLeft;
         private IPL.DirectEffect _directRight;
         private IPL.ReflectionEffect _reflection;
@@ -28,6 +29,7 @@ namespace TS.Audio
         private readonly float[] _outRightL;
         private readonly float[] _outRightR;
         private readonly float[] _reverbAmbi;
+        private readonly float[] _reverbAmbiRotated;
         private readonly float[] _reverbWetL;
         private readonly float[] _reverbWetR;
         private readonly int _frameSize;
@@ -76,6 +78,15 @@ namespace TS.Audio
             if (error != IPL.Error.Success)
                 throw new InvalidOperationException("Failed to create ambisonics binaural effect: " + error);
 
+            var rotationSettings = new IPL.AmbisonicsRotationEffectSettings
+            {
+                MaxOrder = _reflectionOrder
+            };
+
+            error = IPL.AmbisonicsRotationEffectCreate(_ctx.Context, in audioSettings, in rotationSettings, out _ambisonicsRotation);
+            if (error != IPL.Error.Success)
+                throw new InvalidOperationException("Failed to create ambisonics rotation effect: " + error);
+
             var directSettingsMono = new IPL.DirectEffectSettings { NumChannels = 1 };
             error = IPL.DirectEffectCreate(_ctx.Context, in audioSettings, in directSettingsMono, out _directLeft);
             if (error != IPL.Error.Success)
@@ -108,6 +119,7 @@ namespace TS.Audio
             _outRightL = new float[_frameSize];
             _outRightR = new float[_frameSize];
             _reverbAmbi = new float[_frameSize * _reflectionChannels];
+            _reverbAmbiRotated = new float[_frameSize * _reflectionChannels];
             _reverbWetL = new float[_frameSize];
             _reverbWetR = new float[_frameSize];
         }
@@ -269,6 +281,8 @@ namespace TS.Audio
                 IPL.BinauralEffectRelease(ref _binauralRight);
             if (_ambisonicsBinaural.Handle != IntPtr.Zero)
                 IPL.AmbisonicsBinauralEffectRelease(ref _ambisonicsBinaural);
+            if (_ambisonicsRotation.Handle != IntPtr.Zero)
+                IPL.AmbisonicsRotationEffectRelease(ref _ambisonicsRotation);
             if (_directLeft.Handle != IntPtr.Zero)
                 IPL.DirectEffectRelease(ref _directLeft);
             if (_directRight.Handle != IntPtr.Zero)
@@ -445,6 +459,7 @@ namespace TS.Audio
 
             fixed (float* pIn = _mono)
             fixed (float* pAmbi = _reverbAmbi)
+            fixed (float* pAmbiRot = _reverbAmbiRotated)
             {
                 for (int ch = 0; ch < channels; ch++)
                 {
@@ -469,6 +484,26 @@ namespace TS.Audio
 
                 IPL.ReflectionEffectApply(_reflection, ref reflectionParams, ref inBuffer, ref outBuffer, default);
 
+                var rotOutPtr = stackalloc IntPtr[channels];
+                for (int ch = 0; ch < channels; ch++)
+                    rotOutPtr[ch] = (IntPtr)(pAmbiRot + ch * _frameSize);
+
+                var rotOutBuffer = new IPL.AudioBuffer { NumChannels = channels, NumSamples = frames, Data = (IntPtr)rotOutPtr };
+                var listener = _ctx.ListenerSnapshot;
+                var rotationParams = new IPL.AmbisonicsRotationEffectParams
+                {
+                    Orientation = new IPL.CoordinateSpace3
+                    {
+                        Right = listener.Right,
+                        Up = listener.Up,
+                        Ahead = listener.Ahead,
+                        Origin = listener.Origin
+                    },
+                    Order = order
+                };
+
+                IPL.AmbisonicsRotationEffectApply(_ambisonicsRotation, ref rotationParams, ref outBuffer, ref rotOutBuffer);
+
                 var ambiParams = new IPL.AmbisonicsBinauralEffectParams
                 {
                     Hrtf = _ctx.Hrtf,
@@ -480,7 +515,7 @@ namespace TS.Audio
                 ambiOutPtr[1] = (IntPtr)outR;
                 var ambiOutBuffer = new IPL.AudioBuffer { NumChannels = 2, NumSamples = frames, Data = (IntPtr)ambiOutPtr };
 
-                IPL.AmbisonicsBinauralEffectApply(_ambisonicsBinaural, ref ambiParams, ref outBuffer, ref ambiOutBuffer);
+                IPL.AmbisonicsBinauralEffectApply(_ambisonicsBinaural, ref ambiParams, ref rotOutBuffer, ref ambiOutBuffer);
             }
         }
 
