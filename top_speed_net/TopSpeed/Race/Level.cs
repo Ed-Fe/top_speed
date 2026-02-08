@@ -52,10 +52,11 @@ namespace TopSpeed.Race
         private const float KmToMiles = 0.621371f;
         private const float MetersPerMile = 1609.344f;
         private const float MetersToFeet = 3.28084f;
-        private const float WallPingRangeMeters = 30.0f;
+        private const float WallPingRangeMeters = 50.0f;
+        private const float WallPingDetectRangeMeters = 100.0f;
         private const float WallPingNearMeters = 5.0f;
         private const float WallPingMinIntervalSeconds = 0.15f;
-        private const float WallPingMaxIntervalSeconds = 1.4f;
+        private const float WallPingMaxIntervalSeconds = 2.0f;
         private const float WallPingMinVolume = 0.15f;
         private const float WallPingMaxVolume = 0.6f;
 
@@ -1068,7 +1069,7 @@ namespace TopSpeed.Race
 
             var startOffset = Math.Max(0.5f, _car.LengthM * 0.5f);
             var start = _car.WorldPosition + (forward * startOffset);
-            if (!_track.TryGetWallProximity(start, forward, WallPingRangeMeters, out _, out var distance, out var hitWorld))
+            if (!_track.TryGetWallProximity(start, forward, WallPingDetectRangeMeters, out _, out var distance, out var hitWorld, out _))
             {
                 ResetWallPing();
                 return;
@@ -1076,7 +1077,7 @@ namespace TopSpeed.Race
 
             var clampedDistance = Clamp(distance, WallPingNearMeters, WallPingRangeMeters);
             var t = (clampedDistance - WallPingNearMeters) / Math.Max(0.001f, WallPingRangeMeters - WallPingNearMeters);
-            t = (float)Math.Pow(t, 0.6f);
+            t = (float)Math.Pow(t, 0.5f);
             var interval = WallPingMinIntervalSeconds + (WallPingMaxIntervalSeconds - WallPingMinIntervalSeconds) * t;
             var volume = WallPingMaxVolume - (WallPingMaxVolume - WallPingMinVolume) * t;
 

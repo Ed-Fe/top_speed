@@ -41,6 +41,34 @@ namespace TopSpeed.Tracks.Walls
 
         public bool HasWalls => _walls.Count > 0;
         public IReadOnlyList<TrackWallDefinition> Walls => _walls;
+        public bool TryGetGeometry(string id, out GeometryDefinition geometry)
+        {
+            geometry = null!;
+            if (string.IsNullOrWhiteSpace(id))
+                return false;
+            return _geometries.TryGetValue(id.Trim(), out geometry!);
+        }
+
+        public bool TryGetGeometryPoints2D(string id, out IReadOnlyList<Vector2> points)
+        {
+            points = Array.Empty<Vector2>();
+            if (string.IsNullOrWhiteSpace(id))
+                return false;
+
+            if (_geometryPoints2D.TryGetValue(id.Trim(), out var cached))
+            {
+                points = cached;
+                return true;
+            }
+
+            if (!_geometries.TryGetValue(id.Trim(), out var geometry))
+                return false;
+
+            var projected = ProjectToXZ(geometry.Points);
+            _geometryPoints2D[id.Trim()] = projected;
+            points = projected;
+            return true;
+        }
 
         public bool TryGetWall(string id, out TrackWallDefinition wall)
         {

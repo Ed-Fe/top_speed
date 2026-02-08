@@ -53,6 +53,7 @@ namespace TopSpeed.Tracks.Map
     {
         private const float CallLengthMeters = 30.0f;
         private const float WallProbeStepMeters = 0.5f;
+        private const float WallProbeMinDot = 0.17f;
 
         private readonly AudioManager _audio;
         private readonly TrackMap _map;
@@ -1504,14 +1505,16 @@ namespace TopSpeed.Tracks.Map
             float maxDistanceMeters,
             out TrackWallDefinition wall,
             out float distanceMeters,
-            out Vector3 hitWorldPosition)
+            out Vector3 hitWorldPosition,
+            out bool isBoundary)
         {
             wall = null!;
             distanceMeters = 0f;
             hitWorldPosition = worldPosition;
+            isBoundary = false;
 
-            if (_wallManager == null || !_wallManager.HasWalls)
-                return false;
+            var wallManager = _wallManager;
+            var hasWalls = wallManager != null && wallManager.HasWalls;
 
             var forward2 = new Vector2(forward.X, forward.Z);
             if (forward2.LengthSquared() <= 0.000001f)
@@ -1522,22 +1525,208 @@ namespace TopSpeed.Tracks.Map
                 return false;
 
             forward2 = Vector2.Normalize(forward2);
+            var origin = new Vector2(worldPosition.X, worldPosition.Z);
+            TrackWallDefinition? bestWall = null;
+            Vector2 bestHit = default;
+            var bestDistance = float.MaxValue;
+            var bestIsBoundary = false;
+
+            if (hasWalls)
+            {
+                foreach (var candidate in wallManager!.Walls)
+                {
+                    if (candidate == null)
+                        continue;
+                    if (candidate.CollisionMode == TrackWallCollisionMode.Pass)
+                        continue;
+                    if (!wallManager!.TryGetGeometry(candidate.GeometryId, out var geometry) || geometry == null)
+                        continue;
+                    if (!wallManager.TryGetGeometryPoints2D(geometry.Id, out var points2D))
+                        continue;
+                    if (!TryGetClosestPointOnGeometry(points2D, geometry.Type, origin, out var closest, out var rawDistance))
+                        continue;
+
+                    var to = closest - origin;
+                    var toLen = to.Length();
+                    if (toLen <= 0.0001f)
+                    {
+                        bestWall = candidate;
+                        bestHit = closest;
+                        bestDistance = 0f;
+                        bestIsBoundary = false;
+                        break;
+                    }
+
+                    var dirTo = to / toLen;
+                    var dot = Vector2.Dot(forward2, dirTo);
+                    if (dot <= WallProbeMinDot)
+                        continue;
+
+                    var width = Math.Max(0f, candidate.WidthMeters);
+                    var adjustedDistance = Math.Max(0f, rawDistance - (width * 0.5f));
+                    if (adjustedDistance > maxDistance)
+                        continue;
+
+                    if (adjustedDistance < bestDistance)
+                    {
+                        bestDistance = adjustedDistance;
+                        bestWall = candidate;
+                        bestHit = closest;
+                        bestIsBoundary = false;
+                    }
+                }
+            }
+
+            if (TryFindBoundaryAlongRay(origin, forward2, worldPosition.Y, maxDistance, out var boundaryDistance, out var boundaryHit) &&
+                boundaryDistance < bestDistance)
+            {
+                bestDistance = boundaryDistance;
+                bestWall = null;
+                bestHit = boundaryHit;
+                bestIsBoundary = true;
+            }
+
+            if (bestWall == null)
+            {
+                if (!bestIsBoundary)
+                    return false;
+            }
+
+            wall = bestWall!;
+            distanceMeters = bestDistance;
+            hitWorldPosition = new Vector3(bestHit.X, worldPosition.Y, bestHit.Y);
+            isBoundary = bestIsBoundary;
+            return true;
+        }
+
+        private bool TryFindBoundaryAlongRay(
+            Vector2 origin,
+            Vector2 direction,
+            float worldY,
+            float maxDistance,
+            out float distanceMeters,
+            out Vector2 hitPosition)
+        {
+            distanceMeters = 0f;
+            hitPosition = origin;
+
+            if (direction.LengthSquared() <= 0.000001f)
+                return false;
+
+            var startWorld = new Vector3(origin.X, worldY, origin.Y);
+            if (!IsWithinTrack(startWorld))
+                return false;
+
             var stepSize = Math.Max(0.1f, WallProbeStepMeters);
             var steps = Math.Max(1, (int)Math.Ceiling(maxDistance / stepSize));
             var step = maxDistance / steps;
-            var pos = new Vector2(worldPosition.X, worldPosition.Z);
-            for (var i = 0; i <= steps; i++)
+            var pos = origin;
+            for (var i = 1; i <= steps; i++)
             {
-                if (TryFindWallAt(pos, out wall))
+                pos += direction * step;
+                var world = new Vector3(pos.X, worldY, pos.Y);
+                if (!IsWithinTrack(world))
                 {
                     distanceMeters = i * step;
-                    hitWorldPosition = new Vector3(pos.X, worldPosition.Y, pos.Y);
+                    hitPosition = pos;
                     return true;
                 }
-                pos += forward2 * step;
             }
 
             return false;
+        }
+
+        private static bool TryGetClosestPointOnGeometry(
+            IReadOnlyList<Vector2> points,
+            GeometryType geometryType,
+            Vector2 position,
+            out Vector2 closest,
+            out float distance)
+        {
+            closest = position;
+            distance = float.MaxValue;
+            if (points == null || points.Count < 2)
+                return false;
+            var closed = geometryType == GeometryType.Polygon;
+            if (!TryGetClosestPointOnPath(points, position, closed, out closest, out distance))
+                return false;
+
+            return true;
+        }
+
+        private static bool TryGetClosestPointOnPath(
+            IReadOnlyList<Vector2> points,
+            Vector2 position,
+            bool closed,
+            out Vector2 closest,
+            out float distance)
+        {
+            closest = position;
+            distance = float.MaxValue;
+            if (points == null || points.Count < 2)
+                return false;
+
+            var count = points.Count;
+            var lastIndex = count - 1;
+            var segmentCount = lastIndex;
+            var lastEqualsFirst = Vector2.DistanceSquared(points[0], points[lastIndex]) <= 0.0001f;
+
+            for (var i = 0; i < segmentCount; i++)
+            {
+                var a = points[i];
+                var b = points[i + 1];
+                var c = ClosestPointOnSegment(a, b, position);
+                var d = Vector2.DistanceSquared(position, c);
+                if (d < distance)
+                {
+                    distance = d;
+                    closest = c;
+                }
+            }
+
+            if (closed && !lastEqualsFirst)
+            {
+                var a = points[lastIndex];
+                var b = points[0];
+                var c = ClosestPointOnSegment(a, b, position);
+                var d = Vector2.DistanceSquared(position, c);
+                if (d < distance)
+                {
+                    distance = d;
+                    closest = c;
+                }
+            }
+
+            if (distance < float.MaxValue)
+            {
+                distance = (float)Math.Sqrt(distance);
+                return true;
+            }
+
+            return false;
+        }
+
+        private static Vector2 ClosestPointOnSegment(Vector2 a, Vector2 b, Vector2 p)
+        {
+            var ab = b - a;
+            var abLenSq = Vector2.Dot(ab, ab);
+            if (abLenSq <= float.Epsilon)
+                return a;
+            var t = Vector2.Dot(p - a, ab) / abLenSq;
+            if (t <= 0f)
+                return a;
+            if (t >= 1f)
+                return b;
+            return a + ab * t;
+        }
+
+        private static float Clamp(float value, float min, float max)
+        {
+            if (value < min)
+                return min;
+            if (value > max)
+                return max;
+            return value;
         }
 
         public bool TryGetMeshCollision(Vector3 fromWorld, Vector3 toWorld, out TrackMeshCollision collision)
