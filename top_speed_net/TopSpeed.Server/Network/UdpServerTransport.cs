@@ -83,7 +83,7 @@ namespace TopSpeed.Server.Network
             _logger.Info("LiteNetLib transport stopped.");
         }
 
-        public void Send(IPEndPoint endPoint, byte[] payload)
+        public void Send(IPEndPoint endPoint, byte[] payload, DeliveryMethod deliveryMethod = DeliveryMethod.ReliableOrdered)
         {
             if (_server == null || payload == null || payload.Length == 0)
                 return;
@@ -97,7 +97,7 @@ namespace TopSpeed.Server.Network
 
             try
             {
-                peer.Send(payload, DeliveryMethod.ReliableOrdered);
+                peer.Send(payload, deliveryMethod);
             }
             catch (Exception ex)
             {

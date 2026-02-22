@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Net;
 using Bogus;
+using LiteNetLib;
+using TopSpeed.Bots;
 using TopSpeed.Data;
 using TopSpeed.Protocol;
 using TopSpeed.Server.Logging;
@@ -21,6 +23,8 @@ namespace TopSpeed.Server.Network
             State = PlayerState.NotReady;
             Name = string.Empty;
             LastSeenUtc = DateTime.UtcNow;
+            WidthM = 1.8f;
+            LengthM = 4.5f;
         }
 
         public IPEndPoint EndPoint { get; }
@@ -39,6 +43,8 @@ namespace TopSpeed.Server.Network
         public bool Horning { get; set; }
         public bool Backfiring { get; set; }
         public DateTime LastSeenUtc { get; set; }
+        public float WidthM { get; set; }
+        public float LengthM { get; set; }
 
         public PacketPlayerData ToPacket()
         {
@@ -104,11 +110,30 @@ namespace TopSpeed.Server.Network
         public bool AutomaticTransmission { get; }
     }
 
+    internal readonly struct VehicleDimensions
+    {
+        public VehicleDimensions(float widthM, float lengthM)
+        {
+            WidthM = widthM;
+            LengthM = lengthM;
+        }
+
+        public float WidthM { get; }
+        public float LengthM { get; }
+    }
+
     internal enum BotDifficulty
     {
         Easy = 0,
         Normal = 1,
         Hard = 2
+    }
+
+    internal enum BotRacePhase
+    {
+        Normal = 0,
+        Crashing = 1,
+        Restarting = 2
     }
 
     internal sealed class RoomBot
@@ -124,19 +149,23 @@ namespace TopSpeed.Server.Network
         public float PositionX { get; set; }
         public float PositionY { get; set; }
         public float SpeedKph { get; set; }
-        public float TargetSpeedKph { get; set; }
-        public float AccelerationKphPerSecond { get; set; }
         public float StartDelaySeconds { get; set; }
-        public float LateralBias { get; set; }
+        public float EngineStartSecondsRemaining { get; set; }
+        public float WidthM { get; set; } = 1.8f;
+        public float LengthM { get; set; } = 4.5f;
+        public BotPhysicsState PhysicsState { get; set; }
+        public BotPhysicsConfig PhysicsConfig { get; set; } = BotPhysicsCatalog.Get(CarType.Vehicle1);
+        public BotRacePhase RacePhase { get; set; } = BotRacePhase.Normal;
+        public float CrashRecoverySeconds { get; set; }
     }
 
     internal sealed class RaceServer : IDisposable
     {
-        private const float ServerUpdateTime = 0.1f;
+        private const float ServerSimulationStepSeconds = 0.008f;
+        private const float ServerSnapshotIntervalSeconds = 1f / 60f;
+        private const float CleanupIntervalSeconds = 1.0f;
         private const float BotRaceStartDelaySeconds = 6.5f;
-        private const float BotLaneOffset = 3.5f;
-        private const float BotRowSpacing = 10.0f;
-        private const float BotStartLineY = 140.0f;
+        private const float BotAiLookaheadMeters = 30.0f;
         private static readonly TimeSpan ConnectionTimeout = TimeSpan.FromSeconds(10);
 
         private readonly RaceServerConfig _config;
@@ -152,7 +181,9 @@ namespace TopSpeed.Server.Network
         private uint _nextPlayerId = 1;
         private uint _nextRoomId = 1;
         private uint _nextBotId = 1_000_000;
-        private float _lastUpdateTime;
+        private float _simulationAccumulator;
+        private float _snapshotAccumulator;
+        private float _cleanupAccumulator;
 
         public RaceServer(RaceServerConfig config, Logger logger)
         {
@@ -186,15 +217,31 @@ namespace TopSpeed.Server.Network
         {
             lock (_lock)
             {
-                _lastUpdateTime += deltaSeconds;
-                if (_lastUpdateTime < ServerUpdateTime)
+                if (deltaSeconds <= 0f)
                     return;
-                _lastUpdateTime = 0f;
 
-                CleanupConnections();
-                UpdateBots(ServerUpdateTime);
-                BroadcastPlayerData();
-                CheckForBumps();
+                _simulationAccumulator += deltaSeconds;
+                while (_simulationAccumulator >= ServerSimulationStepSeconds)
+                {
+                    _simulationAccumulator -= ServerSimulationStepSeconds;
+                    _cleanupAccumulator += ServerSimulationStepSeconds;
+                    _snapshotAccumulator += ServerSimulationStepSeconds;
+
+                    if (_cleanupAccumulator >= CleanupIntervalSeconds)
+                    {
+                        _cleanupAccumulator -= CleanupIntervalSeconds;
+                        CleanupConnections();
+                    }
+
+                    UpdateBots(ServerSimulationStepSeconds);
+                    CheckForBumps();
+
+                    if (_snapshotAccumulator >= ServerSnapshotIntervalSeconds)
+                    {
+                        _snapshotAccumulator -= ServerSnapshotIntervalSeconds;
+                        BroadcastPlayerData();
+                    }
+                }
             }
         }
 
@@ -337,6 +384,7 @@ namespace TopSpeed.Server.Network
                 return;
 
             player.Car = data.Car;
+            ApplyVehicleDimensions(player, player.Car);
             player.PositionX = data.RaceData.PositionX;
             player.PositionY = data.RaceData.PositionY;
             player.Speed = data.RaceData.Speed;
@@ -377,7 +425,7 @@ namespace TopSpeed.Server.Network
             if (!player.RoomId.HasValue || !_rooms.TryGetValue(player.RoomId.Value, out var room))
                 return;
 
-            SendToRacingPlayersExcept(room, player.Id, PacketSerializer.WritePlayer(Command.PlayerCrashed, crashed.PlayerId, crashed.PlayerNumber));
+            SendToRoomExcept(room, player.Id, PacketSerializer.WritePlayer(Command.PlayerCrashed, crashed.PlayerId, crashed.PlayerNumber));
         }
 
         private void HandleCreateRoom(PlayerConnection player, PacketRoomCreate packet)
@@ -486,7 +534,6 @@ namespace TopSpeed.Server.Network
             SetTrack(room, trackName);
             SendTrackToNotReady(room);
             BroadcastRoomState(room);
-            SendProtocolMessage(player, ProtocolMessageCode.Ok, $"Track set to {room.TrackName}.");
         }
 
         private void HandleSetLaps(PlayerConnection player, PacketRoomSetLaps packet)
@@ -505,7 +552,6 @@ namespace TopSpeed.Server.Network
                 SetTrack(room, room.TrackName);
             SendTrackToNotReady(room);
             BroadcastRoomState(room);
-            SendProtocolMessage(player, ProtocolMessageCode.Ok, $"Laps set to {room.Laps}.");
         }
 
         private void HandleStartRace(PlayerConnection player)
@@ -563,6 +609,7 @@ namespace TopSpeed.Server.Network
 
             var selectedCar = NormalizeNetworkCar(ready.Car);
             player.Car = selectedCar;
+            ApplyVehicleDimensions(player, selectedCar);
             room.PendingLoadouts[player.Id] = new PlayerLoadout(selectedCar, ready.AutomaticTransmission);
             SendProtocolMessageToRoom(room, $"{DescribePlayer(player)} is ready.");
             TryStartRaceAfterLoadout(room);
@@ -589,7 +636,6 @@ namespace TopSpeed.Server.Network
             room.PlayersToStart = value;
             BroadcastRoomState(room);
             BroadcastRoomList();
-            SendProtocolMessage(player, ProtocolMessageCode.Ok, $"Players required to start set to {value}.");
         }
 
         private void HandleAddBot(PlayerConnection player)
@@ -736,6 +782,8 @@ namespace TopSpeed.Server.Network
 
             room.RaceStarted = true;
             room.RaceResults.Clear();
+            var laneHalfWidth = GetLaneHalfWidth(room);
+            var rowSpacing = GetStartRowSpacing(room);
             foreach (var id in room.PlayerIds)
             {
                 if (_players.TryGetValue(id, out var p))
@@ -744,13 +792,21 @@ namespace TopSpeed.Server.Network
             foreach (var bot in room.Bots)
             {
                 bot.State = PlayerState.AwaitingStart;
+                bot.RacePhase = BotRacePhase.Normal;
+                bot.CrashRecoverySeconds = 0f;
                 bot.SpeedKph = 0f;
-                bot.TargetSpeedKph = GetBotTargetSpeedKph(bot.Difficulty);
-                bot.AccelerationKphPerSecond = GetBotAccelerationKphPerSecond(bot.Difficulty);
                 bot.StartDelaySeconds = BotRaceStartDelaySeconds + GetBotReactionDelay(bot.Difficulty);
-                bot.LateralBias = (float)(_random.NextDouble() * 2.0 - 1.0);
-                bot.PositionX = (bot.PlayerNumber % 2 == 1 ? BotLaneOffset : -BotLaneOffset) + (float)(_random.NextDouble() * 0.5 - 0.25);
-                bot.PositionY = BotStartLineY - ((bot.PlayerNumber / 2) * BotRowSpacing);
+                bot.EngineStartSecondsRemaining = 0f;
+                bot.PositionX = CalculateStartX(bot.PlayerNumber, bot.WidthM, laneHalfWidth);
+                bot.PositionY = CalculateStartY(bot.PlayerNumber, rowSpacing);
+                bot.PhysicsState = new BotPhysicsState
+                {
+                    PositionX = bot.PositionX,
+                    PositionY = bot.PositionY,
+                    SpeedKph = 0f,
+                    Gear = 1,
+                    AutoShiftCooldownSeconds = 0f
+                };
             }
 
             SendTrackToRoom(room);
@@ -780,9 +836,19 @@ namespace TopSpeed.Server.Network
             foreach (var bot in room.Bots)
             {
                 bot.State = PlayerState.NotReady;
+                bot.RacePhase = BotRacePhase.Normal;
+                bot.CrashRecoverySeconds = 0f;
                 bot.SpeedKph = 0f;
-                bot.AccelerationKphPerSecond = 0f;
                 bot.StartDelaySeconds = 0f;
+                bot.EngineStartSecondsRemaining = 0f;
+                bot.PhysicsState = new BotPhysicsState
+                {
+                    PositionX = bot.PositionX,
+                    PositionY = bot.PositionY,
+                    SpeedKph = 0f,
+                    Gear = 1,
+                    AutoShiftCooldownSeconds = 0f
+                };
             }
 
             BroadcastRoomState(room);
@@ -914,6 +980,7 @@ namespace TopSpeed.Server.Network
             {
                 bot.Car = (CarType)_random.Next((int)CarType.Vehicle1, (int)CarType.CustomVehicle);
                 bot.AutomaticTransmission = _random.Next(0, 2) == 0;
+                ApplyVehicleDimensions(bot, bot.Car);
             }
         }
 
@@ -996,6 +1063,9 @@ namespace TopSpeed.Server.Network
             if (name.Length > ProtocolConstants.MaxPlayerNameLength)
                 name = name.Substring(0, ProtocolConstants.MaxPlayerNameLength);
 
+            var car = (CarType)_random.Next((int)CarType.Vehicle1, (int)CarType.CustomVehicle);
+            var dimensions = GetVehicleDimensions(car);
+
             return new RoomBot
             {
                 Id = _nextBotId++,
@@ -1003,9 +1073,10 @@ namespace TopSpeed.Server.Network
                 Name = name,
                 Difficulty = (BotDifficulty)_random.Next(0, 3),
                 AddedOrder = room.Bots.Count == 0 ? 1 : room.Bots.Max(b => b.AddedOrder) + 1,
-                Car = (CarType)_random.Next((int)CarType.Vehicle1, (int)CarType.CustomVehicle),
+                Car = car,
                 AutomaticTransmission = _random.Next(0, 2) == 0,
-                TargetSpeedKph = 150f
+                WidthM = dimensions.WidthM,
+                LengthM = dimensions.LengthM
             };
         }
 
@@ -1024,25 +1095,6 @@ namespace TopSpeed.Server.Network
             };
         }
 
-        private float GetBotTargetSpeedKph(BotDifficulty difficulty)
-        {
-            var min = 140f;
-            var max = 170f;
-            switch (difficulty)
-            {
-                case BotDifficulty.Easy:
-                    min = 120f;
-                    max = 150f;
-                    break;
-                case BotDifficulty.Hard:
-                    min = 175f;
-                    max = 210f;
-                    break;
-            }
-
-            return min + (float)_random.NextDouble() * (max - min);
-        }
-
         private float GetBotReactionDelay(BotDifficulty difficulty)
         {
             return difficulty switch
@@ -1050,16 +1102,6 @@ namespace TopSpeed.Server.Network
                 BotDifficulty.Easy => 0.8f + (float)_random.NextDouble() * 0.7f,
                 BotDifficulty.Hard => 0.0f + (float)_random.NextDouble() * 0.3f,
                 _ => 0.3f + (float)_random.NextDouble() * 0.5f
-            };
-        }
-
-        private float GetBotAccelerationKphPerSecond(BotDifficulty difficulty)
-        {
-            return difficulty switch
-            {
-                BotDifficulty.Easy => 20f + (float)_random.NextDouble() * 6f,
-                BotDifficulty.Hard => 30f + (float)_random.NextDouble() * 8f,
-                _ => 24f + (float)_random.NextDouble() * 7f
             };
         }
 
@@ -1086,34 +1128,62 @@ namespace TopSpeed.Server.Network
             return car;
         }
 
-        private void SendToRoom(RaceRoom room, byte[] payload)
+        private static void ApplyVehicleDimensions(PlayerConnection player, CarType car)
+        {
+            var dimensions = GetVehicleDimensions(car);
+            player.WidthM = dimensions.WidthM;
+            player.LengthM = dimensions.LengthM;
+        }
+
+        private static void ApplyVehicleDimensions(RoomBot bot, CarType car)
+        {
+            var dimensions = GetVehicleDimensions(car);
+            bot.WidthM = dimensions.WidthM;
+            bot.LengthM = dimensions.LengthM;
+            bot.PhysicsConfig = BotPhysicsCatalog.Get(car);
+            var state = bot.PhysicsState;
+            if (state.Gear <= 0)
+                state.Gear = 1;
+            bot.PhysicsState = state;
+        }
+
+        private static VehicleDimensions GetVehicleDimensions(CarType car)
+        {
+            return car switch
+            {
+                CarType.Vehicle1 => new VehicleDimensions(1.895f, 4.689f),
+                CarType.Vehicle2 => new VehicleDimensions(1.852f, 4.572f),
+                CarType.Vehicle3 => new VehicleDimensions(1.627f, 3.546f),
+                CarType.Vehicle4 => new VehicleDimensions(1.744f, 3.876f),
+                CarType.Vehicle5 => new VehicleDimensions(1.811f, 4.760f),
+                CarType.Vehicle6 => new VehicleDimensions(1.839f, 4.879f),
+                CarType.Vehicle7 => new VehicleDimensions(2.030f, 4.780f),
+                CarType.Vehicle8 => new VehicleDimensions(1.811f, 4.624f),
+                CarType.Vehicle9 => new VehicleDimensions(2.019f, 5.931f),
+                CarType.Vehicle10 => new VehicleDimensions(0.749f, 2.085f),
+                CarType.Vehicle11 => new VehicleDimensions(0.806f, 2.110f),
+                CarType.Vehicle12 => new VehicleDimensions(0.690f, 2.055f),
+                _ => new VehicleDimensions(1.8f, 4.5f)
+            };
+        }
+
+        private void SendToRoom(RaceRoom room, byte[] payload, DeliveryMethod deliveryMethod = DeliveryMethod.ReliableOrdered)
         {
             foreach (var id in room.PlayerIds)
             {
                 if (_players.TryGetValue(id, out var player))
-                    _transport.Send(player.EndPoint, payload);
+                    _transport.Send(player.EndPoint, payload, deliveryMethod);
             }
         }
 
-        private void SendToRoomExcept(RaceRoom room, uint exceptId, byte[] payload)
+        private void SendToRoomExcept(RaceRoom room, uint exceptId, byte[] payload, DeliveryMethod deliveryMethod = DeliveryMethod.ReliableOrdered)
         {
             foreach (var id in room.PlayerIds)
             {
                 if (id == exceptId)
                     continue;
                 if (_players.TryGetValue(id, out var player))
-                    _transport.Send(player.EndPoint, payload);
-            }
-        }
-
-        private void SendToRacingPlayersExcept(RaceRoom room, uint exceptId, byte[] payload)
-        {
-            foreach (var id in room.PlayerIds)
-            {
-                if (id == exceptId)
-                    continue;
-                if (_players.TryGetValue(id, out var player) && player.State == PlayerState.Racing)
-                    _transport.Send(player.EndPoint, payload);
+                    _transport.Send(player.EndPoint, payload, deliveryMethod);
             }
         }
 
@@ -1140,7 +1210,7 @@ namespace TopSpeed.Server.Network
                     if (player.State == PlayerState.NotReady || player.State == PlayerState.Undefined)
                         continue;
 
-                    SendToRacingPlayersExcept(room, player.Id, PacketSerializer.WritePlayerData(player.ToPacket()));
+                    SendToRoomExcept(room, player.Id, PacketSerializer.WritePlayerData(player.ToPacket()), DeliveryMethod.Sequenced);
                 }
 
                 if (!room.RaceStarted)
@@ -1152,7 +1222,7 @@ namespace TopSpeed.Server.Network
                         continue;
 
                     var payload = PacketSerializer.WritePlayerData(ToBotPacket(bot));
-                    SendToRoom(room, payload);
+                    SendToRoom(room, payload, DeliveryMethod.Sequenced);
                 }
             }
         }
@@ -1166,10 +1236,17 @@ namespace TopSpeed.Server.Network
                 if (room.TrackData == null)
                     continue;
 
-                var raceDistance = GetRaceDistance(room);
-                if (raceDistance <= 0f)
+                var definitions = room.TrackData.Definitions;
+                if (definitions == null || definitions.Length == 0)
                     continue;
-                var anyHumanRacing = room.PlayerIds.Any(id => _players.TryGetValue(id, out var player) && player.State == PlayerState.Racing);
+
+                var lapDistance = GetLapDistance(room);
+                var raceDistance = GetRaceDistance(room);
+                if (lapDistance <= 0f || raceDistance <= 0f)
+                    continue;
+                var laneHalfWidth = GetLaneHalfWidth(room);
+                var anyHumanStarted = room.PlayerIds.Any(id => _players.TryGetValue(id, out var player)
+                    && (player.State == PlayerState.Racing || player.State == PlayerState.Finished));
 
                 foreach (var bot in room.Bots)
                 {
@@ -1178,31 +1255,128 @@ namespace TopSpeed.Server.Network
 
                     if (bot.State == PlayerState.AwaitingStart)
                     {
-                        bot.StartDelaySeconds -= deltaSeconds;
                         if (bot.StartDelaySeconds > 0f)
-                            continue;
-                        if (!anyHumanRacing)
+                        {
+                            bot.StartDelaySeconds -= deltaSeconds;
+                            if (bot.StartDelaySeconds > 0f)
+                                continue;
+                            bot.StartDelaySeconds = 0f;
+                        }
+
+                        if (!anyHumanStarted)
                             continue;
 
+                        if (bot.EngineStartSecondsRemaining <= 0f)
+                        {
+                            bot.EngineStartSecondsRemaining = BotRaceRules.DefaultBotEngineStartSeconds;
+                            bot.SpeedKph = 0f;
+                            continue;
+                        }
+
+                        bot.EngineStartSecondsRemaining -= deltaSeconds;
+                        if (bot.EngineStartSecondsRemaining > 0f)
+                            continue;
+
+                        bot.EngineStartSecondsRemaining = 0f;
                         bot.State = PlayerState.Racing;
+                        bot.RacePhase = BotRacePhase.Normal;
+                        bot.CrashRecoverySeconds = 0f;
                         bot.SpeedKph = 0f;
                     }
 
                     if (bot.State != PlayerState.Racing)
                         continue;
 
-                    var targetWithVariation = bot.TargetSpeedKph + (float)(_random.NextDouble() * 8.0 - 4.0);
-                    var acceleration = Math.Max(5f, bot.AccelerationKphPerSecond);
-                    bot.SpeedKph = Math.Min(targetWithVariation, bot.SpeedKph + (acceleration * deltaSeconds));
-                    if (bot.SpeedKph < 0f)
+                    if (bot.RacePhase == BotRacePhase.Crashing)
+                    {
+                        bot.CrashRecoverySeconds -= deltaSeconds;
                         bot.SpeedKph = 0f;
+                        var crashState = bot.PhysicsState;
+                        crashState.SpeedKph = 0f;
+                        crashState.Gear = 1;
+                        crashState.AutoShiftCooldownSeconds = 0f;
+                        bot.PhysicsState = crashState;
+                        if (bot.CrashRecoverySeconds > 0f)
+                            continue;
 
-                    var metersPerSecond = bot.SpeedKph / 3.6f;
-                    bot.PositionY += metersPerSecond * deltaSeconds;
+                        bot.CrashRecoverySeconds = 0f;
+                        bot.RacePhase = BotRacePhase.Restarting;
+                        bot.EngineStartSecondsRemaining = BotRaceRules.DefaultBotEngineStartSeconds;
+                        continue;
+                    }
 
-                    if (_random.NextDouble() < 0.03)
-                        bot.LateralBias = Math.Max(-1.0f, Math.Min(1.0f, bot.LateralBias + (float)(_random.NextDouble() * 0.6 - 0.3)));
-                    bot.PositionX = Math.Max(-BotLaneOffset, Math.Min(BotLaneOffset, bot.PositionX + bot.LateralBias * 0.05f));
+                    if (bot.RacePhase == BotRacePhase.Restarting)
+                    {
+                        bot.EngineStartSecondsRemaining -= deltaSeconds;
+                        bot.SpeedKph = 0f;
+                        var restartState = bot.PhysicsState;
+                        restartState.SpeedKph = 0f;
+                        restartState.Gear = 1;
+                        restartState.AutoShiftCooldownSeconds = 0f;
+                        bot.PhysicsState = restartState;
+                        if (bot.EngineStartSecondsRemaining > 0f)
+                            continue;
+
+                        bot.EngineStartSecondsRemaining = 0f;
+                        bot.RacePhase = BotRacePhase.Normal;
+                        continue;
+                    }
+
+                    var currentRoad = BotRoadModel.RoadAtPosition(definitions, bot.PositionY, laneHalfWidth);
+                    var nextRoad = BotRoadModel.RoadAtPosition(definitions, bot.PositionY + BotAiLookaheadMeters, laneHalfWidth);
+                    var relPos = BotRaceRules.CalculateRelativeLanePosition(bot.PositionX, currentRoad.Left, laneHalfWidth);
+                    relPos = Math.Max(0f, Math.Min(1f, relPos));
+                    var controlRandom = (bot.AddedOrder * 37) % 100;
+                    BotSharedModel.GetControlInputs((int)bot.Difficulty, controlRandom, currentRoad.Type, nextRoad.Type, relPos, out var throttle, out var steering);
+
+                    var physicsState = bot.PhysicsState;
+                    physicsState.PositionX = bot.PositionX;
+                    physicsState.PositionY = bot.PositionY;
+                    physicsState.SpeedKph = bot.SpeedKph;
+                    if (physicsState.Gear <= 0)
+                        physicsState.Gear = 1;
+
+                    var physicsInput = new BotPhysicsInput(
+                        deltaSeconds,
+                        currentRoad.Surface,
+                        (int)Math.Round(throttle),
+                        brake: 0,
+                        steering: (int)Math.Round(steering));
+                    BotPhysics.Step(bot.PhysicsConfig, ref physicsState, in physicsInput);
+
+                    bot.PhysicsState = physicsState;
+                    bot.PositionX = physicsState.PositionX;
+                    bot.PositionY = physicsState.PositionY;
+                    bot.SpeedKph = physicsState.SpeedKph;
+
+                    var evalRoad = BotRoadModel.RoadAtPosition(definitions, bot.PositionY, laneHalfWidth);
+                    var evalRelPos = BotRaceRules.CalculateRelativeLanePosition(bot.PositionX, evalRoad.Left, laneHalfWidth);
+                    if (BotRaceRules.IsOutsideRoad(evalRelPos))
+                    {
+                        var center = BotRaceRules.RoadCenter(evalRoad.Left, evalRoad.Right);
+                        var fullCrash = BotRaceRules.IsFullCrash(physicsState.Gear, bot.SpeedKph);
+                        if (fullCrash)
+                        {
+                            physicsState.PositionX = center;
+                            physicsState.SpeedKph = 0f;
+                            physicsState.Gear = 1;
+                            physicsState.AutoShiftCooldownSeconds = 0f;
+                            bot.PhysicsState = physicsState;
+                            bot.PositionX = center;
+                            bot.SpeedKph = 0f;
+                            bot.EngineStartSecondsRemaining = 0f;
+                            bot.RacePhase = BotRacePhase.Crashing;
+                            bot.CrashRecoverySeconds = BotRaceRules.DefaultBotCrashRecoverySeconds;
+                            SendToRoom(room, PacketSerializer.WritePlayer(Command.PlayerCrashed, bot.Id, bot.PlayerNumber));
+                            continue;
+                        }
+
+                        physicsState.PositionX = center;
+                        physicsState.SpeedKph /= 4f;
+                        bot.PhysicsState = physicsState;
+                        bot.PositionX = center;
+                        bot.SpeedKph = Math.Max(0f, physicsState.SpeedKph);
+                    }
 
                     if (bot.PositionY < raceDistance)
                         continue;
@@ -1219,6 +1393,48 @@ namespace TopSpeed.Server.Network
                 if (CountActiveRaceParticipants(room) == 0)
                     StopRace(room);
             }
+        }
+
+        private static float GetLapDistance(RaceRoom room)
+        {
+            if (room.TrackData == null || room.TrackData.Definitions == null || room.TrackData.Definitions.Length == 0)
+                return 0f;
+
+            var lapDistance = 0f;
+            foreach (var definition in room.TrackData.Definitions)
+                lapDistance += Math.Max(1f, definition.Length);
+            return lapDistance;
+        }
+
+        private float GetLaneHalfWidth(RaceRoom room)
+        {
+            return BotRaceRules.GetLaneHalfWidthForTrack(room.TrackName);
+        }
+
+        private float GetStartRowSpacing(RaceRoom room)
+        {
+            var maxLength = 4.5f;
+
+            foreach (var playerId in room.PlayerIds)
+            {
+                if (_players.TryGetValue(playerId, out var player))
+                    maxLength = Math.Max(maxLength, player.LengthM);
+            }
+
+            for (var i = 0; i < room.Bots.Count; i++)
+                maxLength = Math.Max(maxLength, room.Bots[i].LengthM);
+
+            return BotRaceRules.CalculateStartRowSpacing(maxLength);
+        }
+
+        private static float CalculateStartX(int gridIndex, float vehicleWidth, float laneHalfWidth)
+        {
+            return BotRaceRules.CalculateStartX(gridIndex, vehicleWidth, laneHalfWidth);
+        }
+
+        private static float CalculateStartY(int gridIndex, float rowSpacing)
+        {
+            return BotRaceRules.CalculateStartY(gridIndex, rowSpacing);
         }
 
         private static PacketPlayerData ToBotPacket(RoomBot bot)
@@ -1240,7 +1456,8 @@ namespace TopSpeed.Server.Network
                     Frequency = frequency
                 },
                 State = bot.State,
-                EngineRunning = bot.State == PlayerState.Racing,
+                EngineRunning = (bot.State == PlayerState.Racing && bot.RacePhase != BotRacePhase.Crashing)
+                    || bot.EngineStartSecondsRemaining > 0f,
                 Braking = false,
                 Horning = false,
                 Backfiring = false
@@ -1249,12 +1466,9 @@ namespace TopSpeed.Server.Network
 
         private static float GetRaceDistance(RaceRoom room)
         {
-            if (room.TrackData == null || room.TrackData.Definitions == null || room.TrackData.Definitions.Length == 0)
+            var lapDistance = GetLapDistance(room);
+            if (lapDistance <= 0f)
                 return 0f;
-
-            var lapDistance = 0f;
-            foreach (var definition in room.TrackData.Definitions)
-                lapDistance += definition.Length;
 
             var laps = room.Laps > 0 ? room.Laps : (byte)1;
             return lapDistance * laps;
@@ -1266,6 +1480,7 @@ namespace TopSpeed.Server.Network
             {
                 var racers = room.PlayerIds.Where(id => _players.TryGetValue(id, out var p) && p.State == PlayerState.Racing)
                     .Select(id => _players[id]).ToList();
+                var botRacers = room.Bots.Where(bot => bot.State == PlayerState.Racing).ToList();
 
                 for (var i = 0; i < racers.Count; i++)
                 {
@@ -1276,7 +1491,10 @@ namespace TopSpeed.Server.Network
 
                         var player = racers[i];
                         var other = racers[j];
-                        if (Math.Abs(player.PositionX - other.PositionX) < 10.0f && Math.Abs(player.PositionY - other.PositionY) < 5.0f)
+                        var xThreshold = (player.WidthM + other.WidthM) * 0.5f;
+                        var yThreshold = (player.LengthM + other.LengthM) * 0.5f;
+                        if (Math.Abs(player.PositionX - other.PositionX) < xThreshold
+                            && Math.Abs(player.PositionY - other.PositionY) < yThreshold)
                         {
                             _transport.Send(player.EndPoint, PacketSerializer.WritePlayerBumped(new PacketPlayerBumped
                             {
@@ -1285,7 +1503,28 @@ namespace TopSpeed.Server.Network
                                 BumpX = player.PositionX - other.PositionX,
                                 BumpY = player.PositionY - other.PositionY,
                                 BumpSpeed = (ushort)Math.Max(0, player.Speed - other.Speed)
-                            }));
+                            }), DeliveryMethod.Sequenced);
+                        }
+                    }
+                }
+
+                foreach (var player in racers)
+                {
+                    foreach (var bot in botRacers)
+                    {
+                        var xThreshold = (player.WidthM + bot.WidthM) * 0.5f;
+                        var yThreshold = (player.LengthM + bot.LengthM) * 0.5f;
+                        if (Math.Abs(player.PositionX - bot.PositionX) < xThreshold
+                            && Math.Abs(player.PositionY - bot.PositionY) < yThreshold)
+                        {
+                            _transport.Send(player.EndPoint, PacketSerializer.WritePlayerBumped(new PacketPlayerBumped
+                            {
+                                PlayerId = player.Id,
+                                PlayerNumber = player.PlayerNumber,
+                                BumpX = player.PositionX - bot.PositionX,
+                                BumpY = player.PositionY - bot.PositionY,
+                                BumpSpeed = (ushort)Math.Max(0, player.Speed - (ushort)Math.Max(0, Math.Min(ushort.MaxValue, (int)Math.Round(bot.SpeedKph))))
+                            }), DeliveryMethod.Sequenced);
                         }
                     }
                 }

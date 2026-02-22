@@ -331,14 +331,26 @@ namespace TopSpeed.Menu
             CancelHint();
         }
 
-        public void ReplaceItems(IEnumerable<MenuItem> items)
+        public void ReplaceItems(IEnumerable<MenuItem> items, bool preserveSelection = false)
         {
+            var previousIndex = _index;
+            var hadSelection = previousIndex != NoSelection;
+
             _items.Clear();
             _items.AddRange(items);
+            CancelHint();
+
+            if (preserveSelection && hadSelection && _items.Count > 0)
+            {
+                _index = Math.Max(0, Math.Min(previousIndex, _items.Count - 1));
+                _justEntered = false;
+                _autoFocusPending = false;
+                return;
+            }
+
             _index = NoSelection;
             _justEntered = true;
             _autoFocusPending = true;
-            CancelHint();
         }
 
         private void MoveSelectionAndAnnounce(int delta)

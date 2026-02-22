@@ -8,6 +8,7 @@ using TopSpeed.Core;
 using TopSpeed.Data;
 using TopSpeed.Input;
 using TopSpeed.Protocol;
+using TopSpeed.Bots;
 using TopSpeed.Tracks;
 using TS.Audio;
 
@@ -65,7 +66,6 @@ namespace TopSpeed.Vehicles
         private float _frontalAreaM2;
         private float _rollingResistanceCoefficient;
         private float _launchRpm;
-        private float _lastDriveRpm;
         private float _lateralGripCoefficient;
         private float _highSpeedStability;
         private float _wheelbaseM;
@@ -92,15 +92,15 @@ namespace TopSpeed.Vehicles
         private int _currentSteering;
         private int _currentThrottle;
         private int _currentBrake;
-        private float _currentSurfaceTractionFactor;
-        private float _currentDeceleration;
         private float _speedDiff;
-        private float _thrust;
         private int _difficulty;
         private bool _finished;
         private bool _horning;
         private bool _backfirePlayedAuto;
         private bool _networkBackfireActive;
+        private bool _remoteEngineStartPending;
+        private float _remoteEngineStartRemaining;
+        private int _remoteEnginePendingFrequency;
         private int _frame;
         private Vector3 _lastAudioPosition;
         private bool _audioInitialized;
@@ -116,6 +116,7 @@ namespace TopSpeed.Vehicles
         private AudioSourceHandle? _soundBackfire;
 
         private EngineModel _engine;
+        private readonly BotPhysicsConfig _physicsConfig;
 
         public ComputerPlayer(
             AudioManager audio,
@@ -155,15 +156,15 @@ namespace TopSpeed.Vehicles
             _currentSteering = 0;
             _currentThrottle = 0;
             _currentBrake = 0;
-            _currentSurfaceTractionFactor = 0;
-            _currentDeceleration = 0;
             _speedDiff = 0;
-            _thrust = 0;
             _speed = 0;
             _frame = 1;
             _finished = false;
             _random = Algorithm.RandomInt(100);
             _networkBackfireActive = false;
+            _remoteEngineStartPending = false;
+            _remoteEngineStartRemaining = 0f;
+            _remoteEnginePendingFrequency = _idleFreq;
 
             var definition = VehicleLoader.LoadOfficial(vehicleIndex, track.Weather);
             _surfaceTractionFactor = definition.SurfaceTractionFactor;
@@ -212,6 +213,37 @@ namespace TopSpeed.Vehicles
                 definition.FinalDriveRatio,
                 definition.TireCircumferenceM,
                 definition.Gears,
+                definition.GearRatios);
+
+            _physicsConfig = new BotPhysicsConfig(
+                _surfaceTractionFactor,
+                _deceleration,
+                _topSpeed,
+                _massKg,
+                _drivetrainEfficiency,
+                _engineBrakingTorqueNm,
+                _tireGripCoefficient,
+                _brakeStrength,
+                _wheelRadiusM,
+                _engineBraking,
+                _idleRpm,
+                _revLimiter,
+                _finalDriveRatio,
+                _powerFactor,
+                _peakTorqueNm,
+                _peakTorqueRpm,
+                _idleTorqueNm,
+                _redlineTorqueNm,
+                _dragCoefficient,
+                _frontalAreaM2,
+                _rollingResistanceCoefficient,
+                _launchRpm,
+                _lateralGripCoefficient,
+                _highSpeedStability,
+                _wheelbaseM,
+                _maxSteerDeg,
+                _steering,
+                _gears,
                 definition.GearRatios);
 
             _soundEngine = CreateRequiredSound(definition.GetSoundPath(VehicleAction.Engine), "engine", looped: true);
@@ -294,7 +326,7 @@ namespace TopSpeed.Vehicles
             _state = ComputerState.Starting;
         }
 
-        public void Crash(float newPosition)
+        public void Crash(float newPosition, bool scheduleRestart = true)
         {
             _speed = 0;
             _soundCrash.Play(loop: false);
@@ -307,7 +339,8 @@ namespace TopSpeed.Vehicles
             _gear = 1;
             _positionX = newPosition;
             _state = ComputerState.Crashing;
-            PushEvent(BotEventType.CarRestart, _soundCrash.GetLengthSeconds() + 1.25f);
+            if (scheduleRestart)
+                PushEvent(BotEventType.CarRestart, _soundCrash.GetLengthSeconds() + 1.25f);
         }
 
         public void MiniCrash(float newPosition)
@@ -384,148 +417,36 @@ namespace TopSpeed.Vehicles
             if (_state == ComputerState.Running && _started())
             {
                 AI();
-
-                _currentSurfaceTractionFactor = _surfaceTractionFactor;
-                _currentDeceleration = _deceleration;
-                _speedDiff = 0;
-                switch (_surface)
+                if (_currentBrake != 0 && _surface == TrackSurface.Asphalt)
                 {
-                    case TrackSurface.Gravel:
-                        _currentSurfaceTractionFactor = (_currentSurfaceTractionFactor * 2) / 3;
-                        _currentDeceleration = (_currentDeceleration * 2) / 3;
-                        break;
-                    case TrackSurface.Water:
-                        _currentSurfaceTractionFactor = (_currentSurfaceTractionFactor * 3) / 5;
-                        _currentDeceleration = (_currentDeceleration * 3) / 5;
-                        break;
-                    case TrackSurface.Sand:
-                        _currentSurfaceTractionFactor = _currentSurfaceTractionFactor / 2;
-                        _currentDeceleration = (_currentDeceleration * 3) / 2;
-                        break;
-                    case TrackSurface.Snow:
-                        _currentDeceleration = _currentDeceleration / 2;
-                        break;
+                    if (!_soundBrake.IsPlaying)
+                        _soundBrake.Play(loop: true);
+                }
+                else if (_soundBrake.IsPlaying)
+                {
+                    _soundBrake.Stop();
                 }
 
-                if (_currentThrottle == 0)
+                var beforeSpeed = _speed;
+                var physicsState = new BotPhysicsState
                 {
-                    _thrust = _currentBrake;
-                    if (_currentBrake != 0)
-                    {
-                        if (_surface == TrackSurface.Asphalt && !_soundBrake.IsPlaying)
-                            _soundBrake.Play(loop: true);
-                        else if (_surface != TrackSurface.Asphalt)
-                            _soundBrake.Stop();
-                    }
-                }
-                else if (_currentBrake == 0)
-                {
-                    _thrust = _currentThrottle;
-                    if (_soundBrake.IsPlaying)
-                        _soundBrake.Stop();
-                }
-                else if (-_currentBrake > _currentThrottle)
-                {
-                    _thrust = _currentBrake;
-                }
+                    PositionX = _positionX,
+                    PositionY = _positionY,
+                    SpeedKph = _speed,
+                    Gear = _gear,
+                    AutoShiftCooldownSeconds = _autoShiftCooldown
+                };
+                var physicsInput = new BotPhysicsInput(elapsed, _surface, _currentThrottle, _currentBrake, _currentSteering);
+                BotPhysics.Step(_physicsConfig, ref physicsState, physicsInput);
 
-                var speedMpsCurrent = _speed / 3.6f;
-                var throttle = Math.Max(0f, Math.Min(100f, _currentThrottle)) / 100f;
-                var surfaceTractionMod = _surfaceTractionFactor > 0f
-                    ? _currentSurfaceTractionFactor / _surfaceTractionFactor
-                    : 1.0f;
-                var longitudinalGripFactor = 1.0f;
+                _positionX = physicsState.PositionX;
+                _positionY = physicsState.PositionY;
+                _speed = physicsState.SpeedKph;
+                _gear = physicsState.Gear;
+                _autoShiftCooldown = physicsState.AutoShiftCooldownSeconds;
+                _speedDiff = _speed - beforeSpeed;
 
-                if (_thrust > 10)
-                {
-                    var steeringCommandAccel = (_currentSteering / 100.0f) * _steering;
-                    if (steeringCommandAccel > 1.0f)
-                        steeringCommandAccel = 1.0f;
-                    else if (steeringCommandAccel < -1.0f)
-                        steeringCommandAccel = -1.0f;
-                    var steerRadAccel = (float)(Math.PI / 180.0) * (_maxSteerDeg * steeringCommandAccel);
-                    var curvatureAccel = (float)Math.Tan(steerRadAccel) / _wheelbaseM;
-                    var desiredLatAccel = curvatureAccel * speedMpsCurrent * speedMpsCurrent;
-                    var desiredLatAccelAbs = Math.Abs(desiredLatAccel);
-                    var grip = _tireGripCoefficient * surfaceTractionMod * _lateralGripCoefficient;
-                    var maxLatAccel = grip * 9.80665f;
-                    var lateralRatio = maxLatAccel > 0f ? Math.Min(1.0f, desiredLatAccelAbs / maxLatAccel) : 0f;
-                    longitudinalGripFactor = (float)Math.Sqrt(Math.Max(0.0, 1.0 - (lateralRatio * lateralRatio)));
-                    var driveRpm = CalculateDriveRpm(speedMpsCurrent, throttle);
-                    var engineTorque = CalculateEngineTorqueNm(driveRpm) * throttle * _powerFactor;
-                    var gearRatio = _engine.GetGearRatio(_gear);
-                    var wheelTorque = engineTorque * gearRatio * _finalDriveRatio * _drivetrainEfficiency;
-                    var wheelForce = wheelTorque / _wheelRadiusM;
-                    var tractionLimit = _tireGripCoefficient * surfaceTractionMod * _massKg * 9.80665f;
-                    if (wheelForce > tractionLimit)
-                        wheelForce = tractionLimit;
-                    wheelForce *= (float)longitudinalGripFactor;
-
-                    var dragForce = 0.5f * 1.225f * _dragCoefficient * _frontalAreaM2 * speedMpsCurrent * speedMpsCurrent;
-                    var rollingForce = _rollingResistanceCoefficient * _massKg * 9.80665f;
-                    var netForce = wheelForce - dragForce - rollingForce;
-                    var accelMps2 = netForce / _massKg;
-                    var newSpeedMps = speedMpsCurrent + (accelMps2 * elapsed);
-                    if (newSpeedMps < 0f)
-                        newSpeedMps = 0f;
-                    _speedDiff = (newSpeedMps - speedMpsCurrent) * 3.6f;
-                    _lastDriveRpm = CalculateDriveRpm(newSpeedMps, throttle);
-                }
-                else
-                {
-                    var surfaceDecelMod = _deceleration > 0f ? _currentDeceleration / _deceleration : 1.0f;
-                    var brakeInput = Math.Max(0f, Math.Min(100f, -_currentBrake)) / 100f;
-                    var brakeDecel = CalculateBrakeDecel(brakeInput, surfaceDecelMod);
-                    var engineBrakeDecel = CalculateEngineBrakingDecel(surfaceDecelMod);
-                    var totalDecel = _thrust < -10 ? (brakeDecel + engineBrakeDecel) : engineBrakeDecel;
-                    _speedDiff = -totalDecel * elapsed;
-                    _lastDriveRpm = 0f;
-                }
-
-                _speed += _speedDiff;
-                if (_speed > _topSpeed)
-                    _speed = _topSpeed;
-                if (_speed < 0)
-                    _speed = 0;
-
-                UpdateAutomaticGear(elapsed, _speed / 3.6f, throttle, surfaceTractionMod, longitudinalGripFactor);
                 _engine.SyncFromSpeed(_speed, _gear, elapsed, _currentThrottle);
-                if (_lastDriveRpm > 0f && _lastDriveRpm > _engine.Rpm)
-                    _engine.OverrideRpm(_lastDriveRpm);
-                if (_thrust < -50 && _speed > 0)
-                    _currentSteering = _currentSteering * 2 / 3;
-
-                var speedMps = _speed / 3.6f;
-                _positionY += (speedMps * elapsed);
-                var surfaceMultiplier = _surface == TrackSurface.Snow ? 1.44f : 1.0f;
-                var steeringCommandLat = (_currentSteering / 100.0f) * _steering;
-                if (steeringCommandLat > 1.0f)
-                    steeringCommandLat = 1.0f;
-                else if (steeringCommandLat < -1.0f)
-                    steeringCommandLat = -1.0f;
-                var steerRadLat = (float)(Math.PI / 180.0) * (_maxSteerDeg * steeringCommandLat);
-                var curvatureLat = (float)Math.Tan(steerRadLat) / _wheelbaseM;
-                var surfaceTractionModLat = _surfaceTractionFactor > 0f ? _currentSurfaceTractionFactor / _surfaceTractionFactor : 1.0f;
-                var gripLat = _tireGripCoefficient * surfaceTractionModLat * _lateralGripCoefficient;
-                var maxLatAccelLat = gripLat * 9.80665f;
-                var desiredLatAccelLat = curvatureLat * speedMps * speedMps;
-                var massFactor = (float)Math.Sqrt(1500f / _massKg);
-                if (massFactor > 3.0f)
-                    massFactor = 3.0f;
-                var stabilityScale = 1.0f - (_highSpeedStability * (speedMps / StabilitySpeedRef) * massFactor);
-                if (stabilityScale < 0.2f)
-                    stabilityScale = 0.2f;
-                else if (stabilityScale > 1.0f)
-                    stabilityScale = 1.0f;
-                var responseTime = BaseLateralSpeed / 20.0f;
-                var maxLatSpeed = maxLatAccelLat * responseTime * stabilityScale;
-                var desiredLatSpeed = desiredLatAccelLat * responseTime;
-                if (desiredLatSpeed > maxLatSpeed)
-                    desiredLatSpeed = maxLatSpeed;
-                else if (desiredLatSpeed < -maxLatSpeed)
-                    desiredLatSpeed = -maxLatSpeed;
-                var lateralSpeed = desiredLatSpeed * surfaceMultiplier;
-                _positionX += (lateralSpeed * elapsed);
 
                 if (_frame % 4 == 0)
                 {
@@ -635,7 +556,7 @@ namespace TopSpeed.Vehicles
             _positionY = Math.Max(0f, positionY);
             _speed = speed;
             _trackLength = trackLength;
-            _state = ComputerState.Running;
+            var preserveCrashState = _state == ComputerState.Crashing && !engineRunning;
 
             _diffX = _positionX - playerX;
             _diffY = _positionY - playerY;
@@ -656,23 +577,31 @@ namespace TopSpeed.Vehicles
 
             if (engineRunning)
             {
+                var targetFrequency = frequency > 0 ? frequency : _idleFreq;
+                _remoteEnginePendingFrequency = targetFrequency;
                 if (!_soundEngine.IsPlaying)
                 {
-                    _soundStart.Stop();
-                    _soundStart.SeekToStart();
-                    _soundStart.Play(loop: false);
-                    _soundEngine.Play(loop: true);
+                    if (!_remoteEngineStartPending)
+                    {
+                        _soundStart.Stop();
+                        _soundStart.SeekToStart();
+                        _soundStart.Play(loop: false);
+                        _remoteEngineStartPending = true;
+                        _remoteEngineStartRemaining = Math.Max(0f, _soundStart.GetLengthSeconds() - 0.1f);
+                    }
                 }
-                var targetFrequency = frequency > 0 ? frequency : _idleFreq;
-                if (_prevFrequency != targetFrequency)
+                if (_soundEngine.IsPlaying && _prevFrequency != targetFrequency)
                 {
                     _soundEngine.SetFrequency(targetFrequency);
                     _prevFrequency = targetFrequency;
                 }
             }
-            else if (_soundEngine.IsPlaying)
+            else
             {
-                _soundEngine.Stop();
+                _remoteEngineStartPending = false;
+                _remoteEngineStartRemaining = 0f;
+                if (_soundEngine.IsPlaying)
+                    _soundEngine.Stop();
             }
 
             if (braking)
@@ -708,6 +637,36 @@ namespace TopSpeed.Vehicles
                 _soundBackfire.Play(loop: false);
             }
             _networkBackfireActive = backfiring;
+
+            if (preserveCrashState)
+                _state = ComputerState.Crashing;
+            else if (_remoteEngineStartPending)
+                _state = ComputerState.Starting;
+            else if (engineRunning)
+                _state = ComputerState.Running;
+            else
+                _state = ComputerState.Stopped;
+        }
+
+        public void UpdateRemoteAudio(float playerX, float playerY, float trackLength, float elapsed)
+        {
+            _trackLength = trackLength;
+            UpdateSpatialAudio(playerX, playerY, _trackLength, elapsed);
+            if (_remoteEngineStartPending)
+            {
+                _remoteEngineStartRemaining -= Math.Max(0f, elapsed);
+                if (_remoteEngineStartRemaining <= 0f)
+                {
+                    _remoteEngineStartPending = false;
+                    if (!_soundEngine.IsPlaying)
+                        _soundEngine.Play(loop: true);
+                    if (_prevFrequency != _remoteEnginePendingFrequency)
+                    {
+                        _soundEngine.SetFrequency(_remoteEnginePendingFrequency);
+                        _prevFrequency = _remoteEnginePendingFrequency;
+                    }
+                }
+            }
         }
 
         public void Evaluate(Track.Road road)
@@ -716,14 +675,14 @@ namespace TopSpeed.Vehicles
             {
                 if (_frame % 4 == 0)
                 {
-                    _relPos = (_positionX - road.Left) / (_laneWidth * 2.0f);
-                    if (_relPos < 0 || _relPos > 1)
+                    _relPos = BotRaceRules.CalculateRelativeLanePosition(_positionX, road.Left, _laneWidth);
+                    if (BotRaceRules.IsOutsideRoad(_relPos))
                     {
-                        var fullCrash = _gear > 1 || _speed >= 50.0f;
+                        var fullCrash = BotRaceRules.IsFullCrash(_gear, _speed);
                         if (fullCrash)
-                            Crash((road.Right + road.Left) / 2);
+                            Crash(BotRaceRules.RoadCenter(road.Left, road.Right));
                         else
-                            MiniCrash((road.Right + road.Left) / 2);
+                            MiniCrash(BotRaceRules.RoadCenter(road.Left, road.Right));
                     }
                 }
             }
@@ -777,122 +736,12 @@ namespace TopSpeed.Vehicles
         private void AI()
         {
             var road = _track.RoadComputer(_positionY);
-            _relPos = (_positionX - road.Left) / (_laneWidth * 2.0f);
+            _relPos = BotRaceRules.CalculateRelativeLanePosition(_positionX, road.Left, _laneWidth);
             var nextRoad = _track.RoadComputer(_positionY + CallLength);
-            _nextRelPos = (_positionX - nextRoad.Left) / (_laneWidth * 2.0f);
-            _currentThrottle = 100;
-            _currentSteering = 0;
-
-            if (road.Type == TrackType.HairpinLeft || nextRoad.Type == TrackType.HairpinLeft)
-            {
-                switch (_difficulty)
-                {
-                    case 0:
-                        if (_relPos > 0.65f)
-                            _currentSteering = -100;
-                        break;
-                    case 1:
-                        if (_relPos > 0.55f)
-                            _currentSteering = -100;
-                        _currentThrottle = 66;
-                        break;
-                    case 2:
-                        if (_relPos > 0.55f)
-                            _currentSteering = -100;
-                        _currentThrottle = 33;
-                        break;
-                }
-            }
-            else if (road.Type == TrackType.HairpinRight || nextRoad.Type == TrackType.HairpinRight)
-            {
-                switch (_difficulty)
-                {
-                    case 0:
-                        if (_relPos < 0.35f)
-                            _currentSteering = 100;
-                        break;
-                    case 1:
-                        if (_relPos < 0.45f)
-                            _currentSteering = 100;
-                        _currentThrottle = 66;
-                        break;
-                    case 2:
-                        if (_relPos < 0.45f)
-                            _currentSteering = 100;
-                        _currentThrottle = 33;
-                        break;
-                }
-            }
-            else if (_relPos < 0.40f)
-            {
-                if (_relPos > 0.2f)
-                {
-                    switch (_difficulty)
-                    {
-                        case 0:
-                            _currentSteering = 100 - _random / 5;
-                            break;
-                        case 1:
-                            _currentSteering = 100 - _random / 10;
-                            break;
-                        case 2:
-                            _currentSteering = 100 - _random / 25;
-                            break;
-                    }
-                }
-                else
-                {
-                    switch (_difficulty)
-                    {
-                        case 0:
-                            _currentSteering = 100 - _random / 10;
-                            break;
-                        case 1:
-                            _currentSteering = 100 - _random / 20;
-                            _currentThrottle = 75;
-                            break;
-                        case 2:
-                            _currentSteering = 100;
-                            _currentThrottle = 50;
-                            break;
-                    }
-                }
-            }
-            else if (_relPos > 0.6f)
-            {
-                if (_relPos < 0.8f)
-                {
-                    switch (_difficulty)
-                    {
-                        case 0:
-                            _currentSteering = -100 + _random / 5;
-                            break;
-                        case 1:
-                            _currentSteering = -100 + _random / 10;
-                            break;
-                        case 2:
-                            _currentSteering = -100 + _random / 25;
-                            break;
-                    }
-                }
-                else
-                {
-                    switch (_difficulty)
-                    {
-                        case 0:
-                            _currentSteering = -100 + _random / 10;
-                            break;
-                        case 1:
-                            _currentSteering = -100 + _random / 20;
-                            _currentThrottle = 75;
-                            break;
-                        case 2:
-                            _currentSteering = -100;
-                            _currentThrottle = 50;
-                            break;
-                    }
-                }
-            }
+            _nextRelPos = BotRaceRules.CalculateRelativeLanePosition(_positionX, nextRoad.Left, _laneWidth);
+            BotSharedModel.GetControlInputs(_difficulty, _random, road.Type, nextRoad.Type, _relPos, out var throttle, out var steering);
+            _currentThrottle = (int)Math.Round(throttle);
+            _currentSteering = (int)Math.Round(steering);
         }
 
         private void Horn()

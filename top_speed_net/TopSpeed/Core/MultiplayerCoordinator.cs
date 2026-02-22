@@ -556,7 +556,8 @@ namespace TopSpeed.Core
                 hint: "Select how many players are required before the host can start this game. Use LEFT or RIGHT to change."));
 
             items.Add(new MenuItem("Return to room controls", MenuAction.Back));
-            _menu.UpdateItems(MultiplayerRoomOptionsMenuId, items);
+            var preserveSelection = string.Equals(_menu.CurrentId, MultiplayerRoomOptionsMenuId, StringComparison.Ordinal);
+            _menu.UpdateItems(MultiplayerRoomOptionsMenuId, items, preserveSelection);
         }
 
         private void RebuildLeaveRoomConfirmMenu()

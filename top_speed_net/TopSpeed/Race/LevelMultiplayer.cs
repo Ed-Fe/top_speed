@@ -16,7 +16,7 @@ namespace TopSpeed.Race
     internal sealed class LevelMultiplayer : Level
     {
         private const int MaxPlayers = ProtocolConstants.MaxPlayers;
-        private const float SendIntervalSeconds = 0.1f;
+        private const float SendIntervalSeconds = 1f / 60f;
         private const float StartLineY = 140.0f;
 
         private sealed class RemotePlayer
@@ -52,7 +52,9 @@ namespace TopSpeed.Race
         private float _sendAccumulator;
         private bool _sentStart;
         private bool _sentFinish;
+        private bool _serverStopReceived;
         private PlayerState _currentState;
+        private CarState _lastCarState;
 
         public LevelMultiplayer(
             AudioManager audio,
@@ -92,6 +94,8 @@ namespace TopSpeed.Race
             _sendAccumulator = 0.0f;
             _sentStart = false;
             _sentFinish = false;
+            _serverStopReceived = false;
+            _lastCarState = _car.State;
 
             var rowSpacing = Math.Max(10.0f, _car.LengthM * 1.5f);
             var positionX = CalculateStartX(_playerNumber, _car.WidthM);
@@ -148,8 +152,11 @@ namespace TopSpeed.Race
         {
             if (_elapsedTotal == 0.0f)
             {
+                var countdownLength = _soundStart.GetLengthSeconds();
+                var countdownTotal = 1.5f + Math.Max(0f, countdownLength);
+                var raceStartDelay = Math.Max(6.5f, countdownTotal);
                 PushEvent(RaceEventType.CarStart, 3.0f);
-                PushEvent(RaceEventType.RaceStart, 6.5f);
+                PushEvent(RaceEventType.RaceStart, raceStartDelay);
                 PushEvent(RaceEventType.PlaySound, 1.5f, _soundStart);
             }
 
@@ -185,7 +192,6 @@ namespace TopSpeed.Race
                         break;
                     case RaceEventType.RaceTimeFinalize:
                         _sayTimeLength = 0.0f;
-                        RequestExitWhenQueueIdle();
                         break;
                     case RaceEventType.PlayRadioSound:
                         _unkeyQueue--;
@@ -204,6 +210,18 @@ namespace TopSpeed.Race
             UpdatePositions();
             _car.Run(elapsed);
             _track.Run(_car.PositionY);
+            foreach (var remote in _remotePlayers.Values)
+                remote.Player.UpdateRemoteAudio(_car.PositionX, _car.PositionY, _track.Length, elapsed);
+
+            if (_started
+                && !_sentFinish
+                && _lastCarState != CarState.Crashing
+                && _lastCarState != CarState.Crashed
+                && (_car.State == CarState.Crashing || _car.State == CarState.Crashed))
+            {
+                _session.SendPlayerCrashed();
+            }
+            _lastCarState = _car.State;
 
             var road = _track.RoadAtPosition(_car.PositionY);
             _car.Evaluate(road);
@@ -401,6 +419,14 @@ namespace TopSpeed.Race
             _car.Bump(bump.BumpX, bump.BumpY, bump.BumpSpeed);
         }
 
+        public void ApplyRemoteCrash(PacketPlayer crashed)
+        {
+            if (crashed.PlayerNumber == _playerNumber)
+                return;
+            if (_remotePlayers.TryGetValue(crashed.PlayerNumber, out var remote))
+                remote.Player.Crash(remote.Player.PositionX, scheduleRestart: false);
+        }
+
         public void RemoveRemotePlayer(byte playerNumber)
         {
             if (_remotePlayers.TryGetValue(playerNumber, out var remote))
@@ -409,6 +435,22 @@ namespace TopSpeed.Race
                 remote.Player.Dispose();
                 _remotePlayers.Remove(playerNumber);
             }
+        }
+
+        public void HandleServerRaceStopped(PacketRaceResults _)
+        {
+            if (_serverStopReceived)
+                return;
+
+            _serverStopReceived = true;
+            if (!_sentFinish)
+            {
+                _sentFinish = true;
+                _currentState = PlayerState.Finished;
+                _session.SendPlayerState(_currentState);
+            }
+
+            RequestExitWhenQueueIdle();
         }
 
         private void UpdatePositions()

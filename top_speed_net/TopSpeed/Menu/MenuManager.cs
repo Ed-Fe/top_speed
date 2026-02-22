@@ -34,10 +34,10 @@ namespace TopSpeed.Menu
                 _screens.Add(screen.Id, screen);
         }
 
-        public void UpdateItems(string id, IEnumerable<MenuItem> items)
+        public void UpdateItems(string id, IEnumerable<MenuItem> items, bool preserveSelection = false)
         {
             var screen = GetScreen(id);
-            screen.ReplaceItems(items);
+            screen.ReplaceItems(items, preserveSelection);
         }
 
         public void ShowRoot(string id)

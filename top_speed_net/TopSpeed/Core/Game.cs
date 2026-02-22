@@ -529,11 +529,23 @@ namespace TopSpeed.Core
                         if (_multiplayerRace != null && ClientPacketSerializer.TryReadPlayerBumped(packet.Payload, out var bump))
                             _multiplayerRace.ApplyBump(bump);
                         break;
+                    case Command.PlayerCrashed:
+                        if (_multiplayerRace != null && ClientPacketSerializer.TryReadPlayer(packet.Payload, out var crashed))
+                            _multiplayerRace.ApplyRemoteCrash(crashed);
+                        break;
                     case Command.PlayerDisconnected:
                         if (_multiplayerRace != null && ClientPacketSerializer.TryReadPlayer(packet.Payload, out var disconnected))
                             _multiplayerRace.RemoveRemotePlayer(disconnected.PlayerNumber);
                         break;
                     case Command.StopRace:
+                        if (_state == AppState.MultiplayerRace && _multiplayerRace != null)
+                        {
+                            if (ClientPacketSerializer.TryReadRaceResults(packet.Payload, out var results))
+                                _multiplayerRace.HandleServerRaceStopped(results);
+                            else
+                                _multiplayerRace.HandleServerRaceStopped(new PacketRaceResults());
+                        }
+                        break;
                     case Command.RaceAborted:
                         if (_state == AppState.MultiplayerRace)
                             EndMultiplayerRace();
