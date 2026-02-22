@@ -408,6 +408,24 @@ namespace TopSpeed.Tracks
             UpdateCurveScale();
         }
 
+        public float LaneHalfWidthAtPosition(float position)
+        {
+            var laneHalfWidth = _laneWidth;
+            var segmentIndex = RoadIndexAt(position);
+            if (segmentIndex >= 0 && segmentIndex < _segmentCount)
+            {
+                var segmentWidth = _definition[segmentIndex].Width;
+                if (segmentWidth > 0f)
+                {
+                    var segmentHalfWidth = segmentWidth * 0.5f;
+                    if (segmentHalfWidth > 0f)
+                        laneHalfWidth = segmentHalfWidth;
+                }
+            }
+
+            return Math.Max(0.1f, laneHalfWidth);
+        }
+
         public int Lap(float position)
         {
             if (_lapDistance <= 0)

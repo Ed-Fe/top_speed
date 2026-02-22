@@ -1189,7 +1189,7 @@ namespace TopSpeed.Vehicles
 
             var updateAudioThisFrame = true;
 
-            if (_state == CarState.Stopped)
+            if (_state == CarState.Stopped || _state == CarState.Starting || _state == CarState.Crashed)
             {
                 if (updateAudioThisFrame)
                 {
@@ -1267,6 +1267,17 @@ namespace TopSpeed.Vehicles
             else if (_state == CarState.Crashing)
             {
                 _positionX = (road.Right + road.Left) / 2;
+                if (updateAudioThisFrame)
+                {
+                    _relPos = roadWidth <= 0f
+                        ? 0.5f
+                        : (_positionX - road.Left) / roadWidth;
+                    _panPos = CalculatePan(_relPos);
+                    _soundStart.SetPanPercent(_panPos);
+                    _soundHorn.SetPanPercent(_panPos);
+                    _soundWipers?.SetPanPercent(_panPos);
+                    UpdateSpatialAudio(road);
+                }
             }
             _frame++;
         }
@@ -1906,6 +1917,14 @@ namespace TopSpeed.Vehicles
             var brakeForwardOffset = Math.Max(0.01f, engineForwardOffset * 0.6f);
             brakePos = PlaceOnArc(listenerX, listenerZ, angle, brakeForwardOffset);
             vehiclePos = PlaceOnArc(listenerX, listenerZ, angle, vehicleForwardOffset);
+            var crashPos = vehiclePos;
+            if (_state == CarState.Crashing || _state == CarState.Crashed || _state == CarState.Starting)
+            {
+                crashPos = new Vector3(
+                    AudioWorld.ToMeters(listenerX),
+                    0f,
+                    AudioWorld.ToMeters(listenerZ));
+            }
 
             SetSpatial(_soundEngine, enginePos, velocity);
             SetSpatial(_soundThrottle, enginePos, velocity);
@@ -1913,7 +1932,7 @@ namespace TopSpeed.Vehicles
             SetSpatial(_soundBrake, brakePos, velocity);
             SetSpatial(_soundBackfire, enginePos, velocity);
             SetSpatial(_soundStart, enginePos, velocity);
-            SetSpatial(_soundCrash, vehiclePos, velocity);
+            SetSpatial(_soundCrash, crashPos, velocity);
             SetSpatial(_soundMiniCrash, vehiclePos, velocity);
             SetSpatial(_soundBump, vehiclePos, velocity);
             SetSpatial(_soundBadSwitch, enginePos, velocity);
@@ -1986,4 +2005,3 @@ namespace TopSpeed.Vehicles
         }
     }
 }
-

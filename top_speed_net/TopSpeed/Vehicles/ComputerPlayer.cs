@@ -21,6 +21,7 @@ namespace TopSpeed.Vehicles
         private const float StabilitySpeedRef = 45.0f;
         private const float AutoShiftHysteresis = 0.05f;
         private const float AutoShiftCooldownSeconds = 0.15f;
+        private const float AudioLateralBoost = 1.0f;
 
         private readonly AudioManager _audio;
         private readonly Track _track;
@@ -101,6 +102,8 @@ namespace TopSpeed.Vehicles
         private bool _remoteEngineStartPending;
         private float _remoteEngineStartRemaining;
         private int _remoteEnginePendingFrequency;
+        private bool _crashLateralAnchored;
+        private float _crashLateralFromCenter;
         private int _frame;
         private Vector3 _lastAudioPosition;
         private bool _audioInitialized;
@@ -170,6 +173,8 @@ namespace TopSpeed.Vehicles
             _remoteEngineStartPending = false;
             _remoteEngineStartRemaining = 0f;
             _remoteEnginePendingFrequency = _idleFreq;
+            _crashLateralAnchored = false;
+            _crashLateralFromCenter = 0f;
             _radioLoaded = false;
             _radioPlaying = false;
             _radioMediaId = 0;
@@ -337,6 +342,11 @@ namespace TopSpeed.Vehicles
 
         public void Crash(float newPosition, bool scheduleRestart = true)
         {
+            var crashRoad = _track.RoadComputer(_positionY);
+            var crashRoadCenterX = (crashRoad.Left + crashRoad.Right) * 0.5f;
+            _crashLateralFromCenter = _positionX - crashRoadCenterX;
+            _crashLateralAnchored = true;
+
             _speed = 0;
             _soundCrash.Play(loop: false);
             _soundEngine.Stop();
@@ -421,8 +431,6 @@ namespace TopSpeed.Vehicles
                 }
             }
 
-            UpdateSpatialAudio(playerX, playerY, _trackLength, elapsed);
-
             if (_state == ComputerState.Running && _started())
             {
                 AI();
@@ -497,6 +505,9 @@ namespace TopSpeed.Vehicles
                     _soundHorn.Stop();
             }
 
+            if (_crashLateralAnchored && !_soundCrash.IsPlaying)
+                _crashLateralAnchored = false;
+
             for (var i = _events.Count - 1; i >= 0; i--)
             {
                 var e = _events[i];
@@ -546,6 +557,10 @@ namespace TopSpeed.Vehicles
                     }
                 }
             }
+
+            // Spatialize using the final state/position of this frame so crash/start transitions
+            // are immediately aligned with the bot's current location.
+            UpdateSpatialAudio(playerX, playerY, _trackLength, elapsed);
         }
 
         public void ApplyNetworkState(
@@ -1029,12 +1044,42 @@ namespace TopSpeed.Vehicles
 
         private void UpdateSpatialAudio(float listenerX, float listenerY, float trackLength, float elapsed)
         {
-            var dx = _positionX - listenerX;
+            // Non-local vehicle spatialization uses track-relative lateral position so left/right
+            // remains stable regardless of the listener vehicle's lane position.
+            var road = _track.RoadComputer(_positionY);
+            var laneHalfWidth = Math.Max(0.1f, Math.Abs(road.Right - road.Left) * 0.5f);
+            var roadCenterX = (road.Left + road.Right) * 0.5f;
+
+            var lateralFromCenter = _positionX - roadCenterX;
             var dz = AudioWorld.WrapDelta(_positionY - listenerY, trackLength);
-            var worldX = listenerX + dx;
-            var worldZ = listenerY + dz;
+            var normalizedLateral = (lateralFromCenter / laneHalfWidth) * AudioLateralBoost;
+            if (normalizedLateral < -1f)
+                normalizedLateral = -1f;
+            else if (normalizedLateral > 1f)
+                normalizedLateral = 1f;
+
+            // Project by lane angle, not raw x/z ratio: keeps left/right cues clear while preserving
+            // true front/back distance for attenuation.
+            var absDz = Math.Abs(dz);
+            var radialDistance = absDz < 1f ? 1f : absDz;
+            var lateralAngle = normalizedLateral * (float)(Math.PI / 2.0);
+            var worldX = listenerX + (float)Math.Sin(lateralAngle) * radialDistance;
+            var worldZ = listenerY + ((dz < 0f ? -1f : 1f) * (float)Math.Cos(lateralAngle) * radialDistance);
 
             var position = AudioWorld.Position(worldX, worldZ);
+            var crashNormalizedLateral = normalizedLateral;
+            if (_crashLateralAnchored)
+            {
+                crashNormalizedLateral = (_crashLateralFromCenter / laneHalfWidth) * AudioLateralBoost;
+                if (crashNormalizedLateral < -1f)
+                    crashNormalizedLateral = -1f;
+                else if (crashNormalizedLateral > 1f)
+                    crashNormalizedLateral = 1f;
+            }
+            var crashAngle = crashNormalizedLateral * (float)(Math.PI / 2.0);
+            var crashWorldX = listenerX + (float)Math.Sin(crashAngle) * radialDistance;
+            var crashWorldZ = listenerY + ((dz < 0f ? -1f : 1f) * (float)Math.Cos(crashAngle) * radialDistance);
+            var crashPosition = AudioWorld.Position(crashWorldX, crashWorldZ);
 
             var velocity = Vector3.Zero;
             var velUnits = Vector3.Zero;
@@ -1049,7 +1094,7 @@ namespace TopSpeed.Vehicles
             SetSpatial(_soundEngine, position, velocity);
             SetSpatial(_soundStart, position, velocity);
             SetSpatial(_soundHorn, position, velocity);
-            SetSpatial(_soundCrash, position, velocity);
+            SetSpatial(_soundCrash, crashPosition, velocity);
             SetSpatial(_soundBrake, position, velocity);
             SetSpatial(_soundBackfire, position, velocity);
             SetSpatial(_soundBump, position, velocity);
