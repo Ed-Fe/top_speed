@@ -86,14 +86,15 @@ namespace TopSpeed.Menu
             screen.QueueTitleAnnouncement(openingAnnouncement);
         }
 
-        public void PopToPrevious()
+        public void PopToPrevious(bool announceTitle = true)
         {
             if (_stack.Count <= 1)
                 return;
 
             _stack.Peek().CancelPendingHint();
             _stack.Pop();
-            _stack.Peek().QueueTitleAnnouncement();
+            if (announceTitle)
+                _stack.Peek().QueueTitleAnnouncement();
         }
 
         public bool HasActiveMenu => _stack.Count > 0;

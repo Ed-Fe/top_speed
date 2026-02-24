@@ -73,6 +73,7 @@ namespace TopSpeed.Menu
         public string Caption { get; }
         public int CloseResultId { get; }
         public Action<int>? OnResult { get; }
+        public bool OpenAsOverlay { get; set; }
         public IReadOnlyList<QuestionButton> Buttons { get; }
     }
 
@@ -93,6 +94,8 @@ namespace TopSpeed.Menu
         {
             return string.Equals(currentMenuId, MenuId, StringComparison.Ordinal);
         }
+
+        public bool HasActiveOverlayQuestion => _activeQuestion != null && _activeQuestion.OpenAsOverlay;
 
         public void Show(Question question)
         {
@@ -143,7 +146,7 @@ namespace TopSpeed.Menu
             _activeQuestion = null;
 
             if (IsQuestionMenu(_menu.CurrentId) && _menu.CanPop)
-                _menu.PopToPrevious();
+                _menu.PopToPrevious(announceTitle: false);
 
             question.OnResult?.Invoke(resultId);
             buttonAction?.Invoke();

@@ -75,6 +75,7 @@ namespace TopSpeed.Core.Multiplayer
         private SavedServerEntry? _savedServerOriginal;
         private int _savedServerEditIndex = -1;
         private int _pendingDeleteServerIndex = -1;
+        public QuestionDialog Questions => _questions;
 
         public MultiplayerCoordinator(
             MenuManager menu,

@@ -128,6 +128,7 @@ namespace TopSpeed.Input
         private bool _joystickAvailable;
         private bool _allowDrivingInput;
         private bool _allowAuxiliaryInput;
+        private bool _overlayInputBlocked;
         private bool UseJoystick => _deviceMode != InputDeviceMode.Keyboard && _joystickAvailable;
         private bool UseKeyboard => _deviceMode != InputDeviceMode.Joystick || !_joystickAvailable;
 
@@ -167,6 +168,7 @@ namespace TopSpeed.Input
             ReadFromSettings();
             _allowDrivingInput = true;
             _allowAuxiliaryInput = true;
+            _overlayInputBlocked = false;
 
             _kbPlayer1 = Key.F1;
             _kbPlayer2 = Key.F2;
@@ -452,7 +454,7 @@ namespace TopSpeed.Input
 
         public int GetSteering()
         {
-            if (!_allowDrivingInput)
+            if (!_allowDrivingInput || _overlayInputBlocked)
                 return 0;
 
             var joystickSteer = 0;
@@ -478,7 +480,7 @@ namespace TopSpeed.Input
 
         public int GetThrottle()
         {
-            if (!_allowDrivingInput)
+            if (!_allowDrivingInput || _overlayInputBlocked)
                 return 0;
 
             var joystickThrottle = UseJoystick ? GetAxis(_throttle) : 0;
@@ -490,7 +492,7 @@ namespace TopSpeed.Input
 
         public int GetBrake()
         {
-            if (!_allowDrivingInput)
+            if (!_allowDrivingInput || _overlayInputBlocked)
                 return 0;
 
             var joystickBrake = UseJoystick ? -GetAxis(_brake) : 0;
@@ -572,7 +574,7 @@ namespace TopSpeed.Input
 
         public bool GetStartEngine() => IsActionTriggered(InputAction.StartEngine);
 
-        public bool GetFlush() => _lastState.IsDown(_kbFlush);
+        public bool GetFlush() => !_overlayInputBlocked && _lastState.IsDown(_kbFlush);
 
         // Speed and distance reporting hotkeys
         public bool GetSpeedReport() => IsActionTriggered(InputAction.ReportSpeed);
@@ -590,6 +592,11 @@ namespace TopSpeed.Input
         {
             _allowDrivingInput = allowDrivingInput;
             _allowAuxiliaryInput = allowAuxiliaryInput;
+        }
+
+        public void SetOverlayInputBlocked(bool blocked)
+        {
+            _overlayInputBlocked = blocked;
         }
 
         internal IReadOnlyList<InputActionDefinition> GetActionDefinitions()
@@ -762,11 +769,15 @@ namespace TopSpeed.Input
 
         private bool WasPressed(Key key)
         {
+            if (_overlayInputBlocked)
+                return false;
             return _lastState.IsDown(key) && !_prevState.IsDown(key);
         }
 
         private bool IsActionTriggered(InputAction action)
         {
+            if (_overlayInputBlocked)
+                return false;
             var meta = GetActionMeta(action);
             if (!IsScopeEnabled(meta.Scope))
                 return false;

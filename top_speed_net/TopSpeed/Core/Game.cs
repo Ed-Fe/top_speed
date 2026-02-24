@@ -33,7 +33,6 @@ namespace TopSpeed.Core
         private readonly SpeechService _speech;
         private readonly InputManager _input;
         private readonly MenuManager _menu;
-        private readonly QuestionDialog _questions;
         private readonly RaceSettings _settings;
         private readonly RaceInput _raceInput;
         private readonly RaceSetup _setup;
@@ -92,7 +91,6 @@ namespace TopSpeed.Core
             _raceInput = new RaceInput(_settings);
             _setup = new RaceSetup();
             _menu = new MenuManager(_audio, _speech, () => _settings.UsageHints);
-            _questions = new QuestionDialog(_menu);
             _menu.SetWrapNavigation(_settings.MenuWrapNavigation);
             _menu.SetMenuSoundPreset(_settings.MenuSoundPreset);
             _menu.SetMenuNavigatePanning(_settings.MenuNavigatePanning);
@@ -134,6 +132,9 @@ namespace TopSpeed.Core
                 _raceInput.Run(_input.Current, joystick);
             else
                 _raceInput.Run(_input.Current);
+
+            _raceInput.SetOverlayInputBlocked(
+                _state == AppState.MultiplayerRace && _multiplayerCoordinator.Questions.HasActiveOverlayQuestion);
 
             switch (_state)
             {
@@ -471,6 +472,13 @@ namespace TopSpeed.Core
                 return;
             }
 
+            if (_multiplayerRaceQuitConfirmActive)
+            {
+                var action = _menu.Update(_input);
+                HandleMenuAction(action);
+                return;
+            }
+
             if (_input.WasPressed(SharpDX.DirectInput.Key.Escape))
                 OpenMultiplayerRaceQuitConfirmation();
         }
@@ -614,21 +622,22 @@ namespace TopSpeed.Core
                 return;
             if (_multiplayerRaceQuitConfirmActive)
                 return;
-            if (_questions.IsQuestionMenu(_menu.CurrentId))
+            if (_multiplayerCoordinator.Questions.IsQuestionMenu(_menu.CurrentId))
                 return;
 
-            _multiplayerRace.StartStopwatchDiff();
-            _multiplayerRace.Pause();
             _multiplayerRaceQuitConfirmActive = true;
-            _state = AppState.Menu;
 
-            _questions.Show(new Question(
+            var question = new Question(
                 "Quit race?",
                 "Are you sure you want to quit this multiplayer race?",
                 QuestionId.No,
                 HandleMultiplayerRaceQuitQuestionResult,
                 new QuestionButton(QuestionId.Yes, "Yes, quit the race"),
-                new QuestionButton(QuestionId.No, "No, continue racing", flags: QuestionButtonFlags.Default)));
+                new QuestionButton(QuestionId.No, "No, continue racing", flags: QuestionButtonFlags.Default))
+            {
+                OpenAsOverlay = true
+            };
+            _multiplayerCoordinator.Questions.Show(question);
         }
 
         private void HandleMultiplayerRaceQuitQuestionResult(int resultId)
@@ -644,20 +653,7 @@ namespace TopSpeed.Core
             if (!_multiplayerRaceQuitConfirmActive)
                 return;
 
-            if (_questions.IsQuestionMenu(_menu.CurrentId) && _menu.CanPop)
-                _menu.PopToPrevious();
-
             _multiplayerRaceQuitConfirmActive = false;
-
-            if (_multiplayerRace == null)
-            {
-                _state = AppState.Menu;
-                return;
-            }
-
-            _multiplayerRace.Unpause();
-            _multiplayerRace.StopStopwatchDiff();
-            _state = AppState.MultiplayerRace;
         }
 
         private void ConfirmQuitMultiplayerRace()
