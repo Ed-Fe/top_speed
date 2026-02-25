@@ -105,6 +105,21 @@ namespace TopSpeed.Core.Multiplayer
 
         private void RebuildCreateRoomMenu()
         {
+            RebuildCreateRoomMenu(preserveSelection: false);
+        }
+
+        private void RebuildCreateRoomMenu(bool preserveSelection)
+        {
+            var maxPlayersItem = new RadioButton(
+                "Maximum players allowed in this room",
+                RoomCapacityOptions,
+                GetCreateRoomPlayersToStartIndex,
+                SetCreateRoomPlayersToStart,
+                hint: "Choose the player capacity from 2 to 10. Use LEFT or RIGHT to change.")
+            {
+                Hidden = _createRoomType == GameRoomType.OneOnOne
+            };
+
             var items = new List<MenuItem>
             {
                 new RadioButton(
@@ -113,12 +128,7 @@ namespace TopSpeed.Core.Multiplayer
                     GetCreateRoomTypeIndex,
                     SetCreateRoomType,
                     hint: "Choose whether this room is a race with bots, a multiplayer race without bots, or a one-on-one game. Use LEFT or RIGHT to change."),
-                new RadioButton(
-                    "Maximum players allowed in this room",
-                    PlayerCountOptions,
-                    GetCreateRoomPlayersToStartIndex,
-                    SetCreateRoomPlayersToStart,
-                    hint: "Choose the player capacity from 1 to 10. Use LEFT or RIGHT to change."),
+                maxPlayersItem,
                 new MenuItem(
                     () => string.IsNullOrWhiteSpace(_createRoomName)
                         ? "Room name, currently automatic"
@@ -130,7 +140,7 @@ namespace TopSpeed.Core.Multiplayer
                 new MenuItem("Cancel room creation", MenuAction.Back)
             };
 
-            _menu.UpdateItems(MultiplayerCreateRoomMenuId, items);
+            _menu.UpdateItems(MultiplayerCreateRoomMenuId, items, preserveSelection);
         }
 
         private void RebuildRoomControlsMenu()
@@ -190,12 +200,20 @@ namespace TopSpeed.Core.Multiplayer
                 value => SetLaps((byte)(value + 1)),
                 hint: "Choose the number of laps for this room. Use LEFT or RIGHT to change."));
 
-            items.Add(new RadioButton(
+            var maxPlayersItem = new RadioButton(
                 "Maximum players allowed in this room",
-                PlayerCountOptions,
-                () => Math.Max(0, Math.Min(PlayerCountOptions.Length - 1, (_roomState.PlayersToStart > 0 ? _roomState.PlayersToStart : (byte)1) - 1)),
-                value => SetPlayersToStart((byte)(value + 1)),
-                hint: "Select the player capacity for this room. The host can start with fewer players. Use LEFT or RIGHT to change."));
+                RoomCapacityOptions,
+                () =>
+                {
+                    var currentCapacity = _roomState.PlayersToStart > 0 ? (int)_roomState.PlayersToStart : 2;
+                    return Math.Max(0, Math.Min(RoomCapacityOptions.Length - 1, Math.Max(2, currentCapacity) - 2));
+                },
+                value => SetPlayersToStart((byte)(value + 2)),
+                hint: "Select the player capacity for this room. The host can start with fewer players. Use LEFT or RIGHT to change.")
+            {
+                Hidden = _roomState.RoomType == GameRoomType.OneOnOne
+            };
+            items.Add(maxPlayersItem);
 
             items.Add(new MenuItem("Return to room controls", MenuAction.Back));
             var preserveSelection = string.Equals(_menu.CurrentId, MultiplayerRoomOptionsMenuId, StringComparison.Ordinal);
@@ -292,7 +310,9 @@ namespace TopSpeed.Core.Multiplayer
             }
 
             var playersToStart = _createRoomPlayersToStart;
-            if (playersToStart < 1 || playersToStart > ProtocolConstants.MaxRoomPlayersToStart)
+            if (playersToStart < 2 || playersToStart > ProtocolConstants.MaxRoomPlayersToStart)
+                playersToStart = 2;
+            if (_createRoomType == GameRoomType.OneOnOne)
                 playersToStart = 2;
 
             session.SendRoomCreate(_createRoomName, _createRoomType, playersToStart);
@@ -318,20 +338,34 @@ namespace TopSpeed.Core.Multiplayer
                 1 => GameRoomType.PlayersRace,
                 _ => GameRoomType.BotsRace
             };
+
+            if (_createRoomType == GameRoomType.OneOnOne)
+                _createRoomPlayersToStart = 2;
+
+            if (string.Equals(_menu.CurrentId, MultiplayerCreateRoomMenuId, StringComparison.Ordinal))
+                RebuildCreateRoomMenu(preserveSelection: true);
         }
 
         private int GetCreateRoomPlayersToStartIndex()
         {
             var playersToStart = _createRoomPlayersToStart;
-            if (playersToStart < 1 || playersToStart > ProtocolConstants.MaxRoomPlayersToStart)
+            if (_createRoomType == GameRoomType.OneOnOne)
                 playersToStart = 2;
-            return playersToStart - 1;
+            if (playersToStart < 2 || playersToStart > ProtocolConstants.MaxRoomPlayersToStart)
+                playersToStart = 2;
+            return playersToStart - 2;
         }
 
         private void SetCreateRoomPlayersToStart(int index)
         {
-            var playersToStart = (byte)(index + 1);
-            if (playersToStart < 1 || playersToStart > ProtocolConstants.MaxRoomPlayersToStart)
+            if (_createRoomType == GameRoomType.OneOnOne)
+            {
+                _createRoomPlayersToStart = 2;
+                return;
+            }
+
+            var playersToStart = (byte)(index + 2);
+            if (playersToStart < 2 || playersToStart > ProtocolConstants.MaxRoomPlayersToStart)
                 return;
             _createRoomPlayersToStart = playersToStart;
         }
@@ -455,6 +489,8 @@ namespace TopSpeed.Core.Multiplayer
             if (session == null || !_roomState.IsHost || !_roomState.InRoom)
                 return;
 
+            if (playersToStart < 2)
+                playersToStart = 2;
             session.SendRoomSetPlayersToStart(playersToStart);
         }
 

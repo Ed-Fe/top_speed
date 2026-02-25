@@ -27,7 +27,7 @@ namespace TopSpeed.Core.Multiplayer
         private const string MultiplayerSavedServersMenuId = "multiplayer_saved_servers";
         private const string MultiplayerSavedServerFormMenuId = "multiplayer_saved_server_form";
         private static readonly string[] RoomTypeOptions = { "Race with bots", "Race without bots", "One-on-one without bots" };
-        private static readonly string[] PlayerCountOptions = BuildNumericOptions(1, ProtocolConstants.MaxRoomPlayersToStart, "players");
+        private static readonly string[] RoomCapacityOptions = BuildNumericOptions(2, ProtocolConstants.MaxRoomPlayersToStart, "players");
         private static readonly string[] LapCountOptions = BuildNumericOptions(1, 16, "laps");
         private static readonly TrackInfo[] RoomTrackOptions = BuildRoomTrackOptions();
         private static readonly string[] RoomTrackLabels = BuildRoomTrackLabels();

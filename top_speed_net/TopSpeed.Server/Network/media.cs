@@ -38,7 +38,9 @@ namespace TopSpeed.Server.Network
                 Extension = extension,
                 TotalBytes = begin.TotalBytes,
                 NextChunk = 0,
-                Buffer = new byte[begin.TotalBytes],
+                // Radio media is relayed chunk-by-chunk and is not buffered in full on the server.
+                BufferEnabled = false,
+                Buffer = Array.Empty<byte>(),
                 Offset = 0
             };
 
@@ -68,14 +70,23 @@ namespace TopSpeed.Server.Network
             if (chunk.Data == null || chunk.Data.Length == 0 || chunk.Data.Length > ProtocolConstants.MaxMediaChunkBytes)
                 return;
 
-            var remaining = transfer.Buffer.Length - transfer.Offset;
+            var remaining = (int)transfer.TotalBytes - transfer.Offset;
             if (chunk.Data.Length > remaining)
             {
                 player.IncomingMedia = null;
                 return;
             }
 
-            Buffer.BlockCopy(chunk.Data, 0, transfer.Buffer, transfer.Offset, chunk.Data.Length);
+            if (transfer.BufferEnabled)
+            {
+                if (transfer.Buffer == null || transfer.Buffer.Length < transfer.Offset + chunk.Data.Length)
+                {
+                    player.IncomingMedia = null;
+                    return;
+                }
+
+                Buffer.BlockCopy(chunk.Data, 0, transfer.Buffer, transfer.Offset, chunk.Data.Length);
+            }
             transfer.Offset += chunk.Data.Length;
             transfer.NextChunk++;
 
@@ -104,12 +115,19 @@ namespace TopSpeed.Server.Network
                 return;
             }
 
-            room.MediaMap[player.Id] = new MediaBlob
+            if (transfer.BufferEnabled && transfer.Buffer != null && transfer.Buffer.Length == transfer.Offset)
             {
-                MediaId = transfer.MediaId,
-                Extension = transfer.Extension,
-                Data = transfer.Buffer
-            };
+                room.MediaMap[player.Id] = new MediaBlob
+                {
+                    MediaId = transfer.MediaId,
+                    Extension = transfer.Extension,
+                    Data = transfer.Buffer
+                };
+            }
+            else
+            {
+                room.MediaMap.Remove(player.Id);
+            }
             player.IncomingMedia = null;
 
             SendToRoomExceptOnStream(room, player.Id, PacketSerializer.WritePlayerMediaEnd(new PacketPlayerMediaEnd

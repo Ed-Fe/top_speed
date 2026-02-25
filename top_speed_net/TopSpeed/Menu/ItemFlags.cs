@@ -6,6 +6,7 @@ namespace TopSpeed.Menu
     internal enum MenuItemFlags
     {
         None = 0,
-        Close = 1
+        Close = 1,
+        Hidden = 2
     }
 }

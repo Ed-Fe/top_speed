@@ -46,7 +46,9 @@ namespace TopSpeed.Server.Network
 
             var roomType = packet.RoomType;
             var playersToStart = packet.PlayersToStart;
-            if (playersToStart < 1 || playersToStart > ProtocolConstants.MaxRoomPlayersToStart)
+            if (playersToStart < 2 || playersToStart > ProtocolConstants.MaxRoomPlayersToStart)
+                playersToStart = 2;
+            if (roomType == GameRoomType.OneOnOne)
                 playersToStart = 2;
 
             var room = new RaceRoom(_nextRoomId++, roomName, roomType, playersToStart);
@@ -278,9 +280,15 @@ namespace TopSpeed.Server.Network
             }
 
             var value = packet.PlayersToStart;
-            if (value < 1 || value > ProtocolConstants.MaxRoomPlayersToStart)
+            if (value < 2 || value > ProtocolConstants.MaxRoomPlayersToStart)
             {
-                SendProtocolMessage(player, ProtocolMessageCode.InvalidPlayersToStart, "Player limit must be between 1 and 10.");
+                SendProtocolMessage(player, ProtocolMessageCode.InvalidPlayersToStart, "Player limit must be between 2 and 10.");
+                return;
+            }
+
+            if (room.RoomType == GameRoomType.OneOnOne && value != 2)
+            {
+                SendProtocolMessage(player, ProtocolMessageCode.InvalidPlayersToStart, "One-on-one rooms always allow a maximum of 2 players.");
                 return;
             }
 
@@ -859,7 +867,7 @@ namespace TopSpeed.Server.Network
                 return 1;
 
             // Room player count now acts as capacity. One-on-one still requires two racers.
-            return room.RoomType == GameRoomType.OneOnOne ? 2 : 1;
+            return 2;
         }
 
         private void SendProtocolMessage(PlayerConnection player, ProtocolMessageCode code, string text)

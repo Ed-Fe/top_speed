@@ -90,7 +90,8 @@ namespace TopSpeed.Menu
             _audio = audio;
             _speech = speech;
             _usageHintsEnabled = usageHintsEnabled ?? (() => false);
-            _items = new List<MenuItem>(items);
+            _items = new List<MenuItem>();
+            AddVisibleItems(_items, items);
             _shortcuts = new List<MenuShortcut>();
             _sharedShortcuts = new List<MenuShortcut>();
             _defaultMenuSoundRoot = Path.Combine(AssetPaths.SoundsRoot, "En", "Menu");
@@ -526,7 +527,7 @@ namespace TopSpeed.Menu
             var hadSelection = previousIndex != NoSelection;
 
             _items.Clear();
-            _items.AddRange(items);
+            AddVisibleItems(_items, items);
             CancelHint();
 
             if (preserveSelection && hadSelection && _items.Count > 0)
@@ -544,6 +545,19 @@ namespace TopSpeed.Menu
             _pendingFocusIndex = null;
             _justEntered = true;
             _autoFocusPending = true;
+        }
+
+        private static void AddVisibleItems(List<MenuItem> target, IEnumerable<MenuItem> items)
+        {
+            if (target == null || items == null)
+                return;
+
+            foreach (var item in items)
+            {
+                if (item == null || item.IsHidden)
+                    continue;
+                target.Add(item);
+            }
         }
 
         private void MoveSelectionAndAnnounce(int delta)

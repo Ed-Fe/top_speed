@@ -118,10 +118,11 @@ namespace TopSpeed.Server.Network
         public string Extension { get; set; } = string.Empty;
         public uint TotalBytes { get; set; }
         public ushort NextChunk { get; set; }
+        public bool BufferEnabled { get; set; }
         public byte[] Buffer { get; set; } = Array.Empty<byte>();
         public int Offset { get; set; }
 
-        public bool IsComplete => Buffer.Length > 0 && Offset >= Buffer.Length;
+        public bool IsComplete => TotalBytes > 0 && Offset >= (int)TotalBytes;
     }
 
     internal readonly struct PlayerLoadout
