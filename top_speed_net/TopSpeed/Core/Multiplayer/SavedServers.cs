@@ -88,47 +88,68 @@ namespace TopSpeed.Core.Multiplayer
 
         private void UpdateSavedServerDraftName()
         {
-            var result = _promptTextInput("Enter the server name.", _savedServerDraft.Name, SpeechService.SpeakFlag.InterruptableButStop, true);
-            if (result.Cancelled)
-                return;
+            _promptTextInput(
+                "Enter the server name.",
+                _savedServerDraft.Name,
+                SpeechService.SpeakFlag.None,
+                true,
+                result =>
+                {
+                    if (result.Cancelled)
+                        return;
 
-            _savedServerDraft.Name = (result.Text ?? string.Empty).Trim();
-            RebuildSavedServerFormMenu();
+                    _savedServerDraft.Name = (result.Text ?? string.Empty).Trim();
+                    RebuildSavedServerFormMenu();
+                });
         }
 
         private void UpdateSavedServerDraftHost()
         {
-            var result = _promptTextInput("Enter the server IP address or host name.", _savedServerDraft.Host, SpeechService.SpeakFlag.InterruptableButStop, true);
-            if (result.Cancelled)
-                return;
+            _promptTextInput(
+                "Enter the server IP address or host name.",
+                _savedServerDraft.Host,
+                SpeechService.SpeakFlag.None,
+                true,
+                result =>
+                {
+                    if (result.Cancelled)
+                        return;
 
-            _savedServerDraft.Host = (result.Text ?? string.Empty).Trim();
-            RebuildSavedServerFormMenu();
+                    _savedServerDraft.Host = (result.Text ?? string.Empty).Trim();
+                    RebuildSavedServerFormMenu();
+                });
         }
 
         private void UpdateSavedServerDraftPort()
         {
             var current = _savedServerDraft.Port > 0 ? _savedServerDraft.Port.ToString() : string.Empty;
-            var result = _promptTextInput("Enter the server port, or leave empty for default.", current, SpeechService.SpeakFlag.InterruptableButStop, true);
-            if (result.Cancelled)
-                return;
+            _promptTextInput(
+                "Enter the server port, or leave empty for default.",
+                current,
+                SpeechService.SpeakFlag.None,
+                true,
+                result =>
+                {
+                    if (result.Cancelled)
+                        return;
 
-            var trimmed = (result.Text ?? string.Empty).Trim();
-            if (string.IsNullOrWhiteSpace(trimmed))
-            {
-                _savedServerDraft.Port = 0;
-                RebuildSavedServerFormMenu();
-                return;
-            }
+                    var trimmed = (result.Text ?? string.Empty).Trim();
+                    if (string.IsNullOrWhiteSpace(trimmed))
+                    {
+                        _savedServerDraft.Port = 0;
+                        RebuildSavedServerFormMenu();
+                        return;
+                    }
 
-            if (!int.TryParse(trimmed, out var port) || port < 1 || port > 65535)
-            {
-                _speech.Speak("Invalid port. Enter a number between 1 and 65535.");
-                return;
-            }
+                    if (!int.TryParse(trimmed, out var port) || port < 1 || port > 65535)
+                    {
+                        _speech.Speak("Invalid port. Enter a number between 1 and 65535.");
+                        return;
+                    }
 
-            _savedServerDraft.Port = port;
-            RebuildSavedServerFormMenu();
+                    _savedServerDraft.Port = port;
+                    RebuildSavedServerFormMenu();
+                });
         }
 
         private void RebuildSavedServerFormMenu()

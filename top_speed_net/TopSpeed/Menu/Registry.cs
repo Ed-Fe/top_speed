@@ -210,7 +210,7 @@ namespace TopSpeed.Menu
                 new MenuItem("Create room controls are loading", MenuAction.None),
                 BackItem()
             };
-            return _menu.CreateMenu("multiplayer_create_room", items, "Create a new game room");
+            return _menu.CreateMenu("multiplayer_create_room", items);
         }
 
         private MenuScreen BuildMultiplayerRoomControlsMenu()

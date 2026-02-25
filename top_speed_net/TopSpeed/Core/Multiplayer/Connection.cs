@@ -32,25 +32,24 @@ namespace TopSpeed.Core.Multiplayer
 
         public void BeginManualServerEntry()
         {
-            while (true)
-            {
-                var result = _promptTextInput("Enter the server IP address or domain.", _settings.LastServerAddress,
-                    SpeechService.SpeakFlag.InterruptableButStop, true);
-                if (result.Cancelled)
-                    return;
-                if (HandleServerAddressInput(result.Text))
-                    return;
-            }
+            PromptServerAddressInput(_settings.LastServerAddress);
         }
 
         public void BeginServerPortEntry()
         {
             var current = _settings.ServerPort > 0 ? _settings.ServerPort.ToString() : string.Empty;
-            var result = _promptTextInput("Enter a custom server port, or leave empty for default.", current,
-                SpeechService.SpeakFlag.None, true);
-            if (result.Cancelled)
-                return;
-            HandleServerPortInput(result.Text);
+            _promptTextInput(
+                "Enter a custom server port, or leave empty for default.",
+                current,
+                SpeechService.SpeakFlag.None,
+                true,
+                result =>
+                {
+                    if (result.Cancelled)
+                        return;
+
+                    HandleServerPortInput(result.Text);
+                });
         }
 
         private void HandleDiscoveryResult(IReadOnlyList<ServerInfo> servers)
@@ -107,20 +106,13 @@ namespace TopSpeed.Core.Multiplayer
             _saveSettings();
             _pendingServerAddress = host;
             _pendingServerPort = overridePort ?? ResolveServerPort();
-            return BeginCallSignInput();
+            BeginCallSignInput();
+            return true;
         }
 
-        private bool BeginCallSignInput()
+        private void BeginCallSignInput()
         {
-            while (true)
-            {
-                var result = _promptTextInput("Enter your call sign.", null,
-                    SpeechService.SpeakFlag.InterruptableButStop, true);
-                if (result.Cancelled)
-                    return false;
-                if (HandleCallSignInput(result.Text))
-                    return true;
-            }
+            PromptCallSignInput(null);
         }
 
         private bool HandleCallSignInput(string text)
@@ -307,6 +299,43 @@ namespace TopSpeed.Core.Multiplayer
         private MultiplayerSession? SessionOrNull()
         {
             return _getSession();
+        }
+
+        private void PromptServerAddressInput(string? initialValue)
+        {
+            _promptTextInput(
+                "Enter the server IP address or domain.",
+                initialValue,
+                SpeechService.SpeakFlag.None,
+                true,
+                result =>
+                {
+                    if (result.Cancelled)
+                        return;
+
+                    if (!HandleServerAddressInput(result.Text))
+                    {
+                        var retry = string.IsNullOrWhiteSpace(result.Text) ? initialValue : result.Text;
+                        PromptServerAddressInput(retry);
+                    }
+                });
+        }
+
+        private void PromptCallSignInput(string? initialValue)
+        {
+            _promptTextInput(
+                "Enter your call sign.",
+                initialValue,
+                SpeechService.SpeakFlag.None,
+                true,
+                result =>
+                {
+                    if (result.Cancelled)
+                        return;
+
+                    if (!HandleCallSignInput(result.Text))
+                        PromptCallSignInput(result.Text);
+                });
         }
 
         private void CheckCurrentPing()

@@ -39,7 +39,7 @@ namespace TopSpeed.Core.Multiplayer
         private readonly SpeechService _speech;
         private readonly RaceSettings _settings;
         private readonly MultiplayerConnector _connector;
-        private readonly Func<string, string?, SpeechService.SpeakFlag, bool, TextInputResult> _promptTextInput;
+        private readonly Action<string, string?, SpeechService.SpeakFlag, bool, Action<TextInputResult>> _promptTextInput;
         private readonly Action _saveSettings;
         private readonly Action _enterMenuState;
         private readonly Action<MultiplayerSession> _setSession;
@@ -87,7 +87,7 @@ namespace TopSpeed.Core.Multiplayer
             SpeechService speech,
             RaceSettings settings,
             MultiplayerConnector connector,
-            Func<string, string?, SpeechService.SpeakFlag, bool, TextInputResult> promptTextInput,
+            Action<string, string?, SpeechService.SpeakFlag, bool, Action<TextInputResult>> promptTextInput,
             Action saveSettings,
             Action enterMenuState,
             Action<MultiplayerSession> setSession,

@@ -205,9 +205,10 @@ namespace TopSpeed.Server.Network
             if (!TryGetHostedRoom(player, out var room))
                 return;
 
-            if (GetRoomParticipantCount(room) < room.PlayersToStart)
+            var minimumParticipants = GetMinimumParticipantsToStart(room);
+            if (GetRoomParticipantCount(room) < minimumParticipants)
             {
-                SendProtocolMessage(player, ProtocolMessageCode.Failed, $"Not enough players. {room.PlayersToStart} required.");
+                SendProtocolMessage(player, ProtocolMessageCode.Failed, $"Not enough players. {minimumParticipants} required to start.");
                 return;
             }
 
@@ -228,7 +229,7 @@ namespace TopSpeed.Server.Network
             AssignRandomBotLoadouts(room);
             AnnounceBotsReady(room);
             TouchRoomVersion(room);
-            _logger.Info($"Race prepare started: room={room.Id} \"{room.Name}\", requestedBy={player.Id}, humans={room.PlayerIds.Count}, bots={room.Bots.Count}, required={room.PlayersToStart}.");
+            _logger.Info($"Race prepare started: room={room.Id} \"{room.Name}\", requestedBy={player.Id}, humans={room.PlayerIds.Count}, bots={room.Bots.Count}, capacity={room.PlayersToStart}, minStart={minimumParticipants}.");
 
             SendProtocolMessageToRoom(room, $"{DescribePlayer(player)} is about to start the game. Choose your vehicle and transmission mode.");
             EmitRoomLifecycleEvent(room, RoomEventKind.PrepareStarted);
@@ -279,7 +280,7 @@ namespace TopSpeed.Server.Network
             var value = packet.PlayersToStart;
             if (value < 1 || value > ProtocolConstants.MaxRoomPlayersToStart)
             {
-                SendProtocolMessage(player, ProtocolMessageCode.InvalidPlayersToStart, "Players to start must be between 1 and 10.");
+                SendProtocolMessage(player, ProtocolMessageCode.InvalidPlayersToStart, "Player limit must be between 1 and 10.");
                 return;
             }
 
@@ -829,14 +830,15 @@ namespace TopSpeed.Server.Network
         {
             if (!room.PreparingRace)
                 return;
-            if (GetRoomParticipantCount(room) < room.PlayersToStart)
+            var minimumParticipants = GetMinimumParticipantsToStart(room);
+            if (GetRoomParticipantCount(room) < minimumParticipants)
             {
                 room.PreparingRace = false;
                 room.PendingLoadouts.Clear();
                 TouchRoomVersion(room);
                 EmitRoomLifecycleEvent(room, RoomEventKind.PrepareCancelled);
                 SendProtocolMessageToRoom(room, "Race start cancelled because there are not enough players.");
-                _logger.Info($"Race prepare cancelled: room={room.Id} \"{room.Name}\", participants={GetRoomParticipantCount(room)}, required={room.PlayersToStart}.");
+                _logger.Info($"Race prepare cancelled: room={room.Id} \"{room.Name}\", participants={GetRoomParticipantCount(room)}, minStart={minimumParticipants}, capacity={room.PlayersToStart}.");
                 return;
             }
             if (room.PendingLoadouts.Count < room.PlayerIds.Count)
@@ -849,6 +851,15 @@ namespace TopSpeed.Server.Network
             SendProtocolMessageToRoom(room, "All players are ready. Starting game.");
             _logger.Info($"All loadouts ready: room={room.Id} \"{room.Name}\", starting race.");
             StartRace(room);
+        }
+
+        private static int GetMinimumParticipantsToStart(RaceRoom room)
+        {
+            if (room == null)
+                return 1;
+
+            // Room player count now acts as capacity. One-on-one still requires two racers.
+            return room.RoomType == GameRoomType.OneOnOne ? 2 : 1;
         }
 
         private void SendProtocolMessage(PlayerConnection player, ProtocolMessageCode code, string text)

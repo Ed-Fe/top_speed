@@ -191,11 +191,11 @@ namespace TopSpeed.Core.Multiplayer
                 hint: "Choose the number of laps for this room. Use LEFT or RIGHT to change."));
 
             items.Add(new RadioButton(
-                "Players required before the host can start",
+                "Maximum players allowed in this room",
                 PlayerCountOptions,
                 () => Math.Max(0, Math.Min(PlayerCountOptions.Length - 1, (_roomState.PlayersToStart > 0 ? _roomState.PlayersToStart : (byte)1) - 1)),
                 value => SetPlayersToStart((byte)(value + 1)),
-                hint: "Select how many players are required before the host can start this game. Use LEFT or RIGHT to change."));
+                hint: "Select the player capacity for this room. The host can start with fewer players. Use LEFT or RIGHT to change."));
 
             items.Add(new MenuItem("Return to room controls", MenuAction.Back));
             var preserveSelection = string.Equals(_menu.CurrentId, MultiplayerRoomOptionsMenuId, StringComparison.Ordinal);
@@ -259,25 +259,27 @@ namespace TopSpeed.Core.Multiplayer
 
         private void UpdateCreateRoomName()
         {
-            var result = _promptTextInput(
+            _promptTextInput(
                 "Enter a room name. Leave this field empty to use an automatic room name.",
                 _createRoomName,
                 SpeechService.SpeakFlag.None,
-                true);
+                true,
+                result =>
+                {
+                    if (result.Cancelled)
+                        return;
 
-            if (result.Cancelled)
-                return;
+                    _createRoomName = (result.Text ?? string.Empty).Trim();
+                    RebuildCreateRoomMenu();
 
-            _createRoomName = (result.Text ?? string.Empty).Trim();
-            RebuildCreateRoomMenu();
+                    if (string.IsNullOrWhiteSpace(_createRoomName))
+                    {
+                        _speech.Speak("Automatic room name selected.");
+                        return;
+                    }
 
-            if (string.IsNullOrWhiteSpace(_createRoomName))
-            {
-                _speech.Speak("Automatic room name selected.");
-                return;
-            }
-
-            _speech.Speak($"Room name set to {_createRoomName}.");
+                    _speech.Speak($"Room name set to {_createRoomName}.");
+                });
         }
 
         private void ConfirmCreateRoom()

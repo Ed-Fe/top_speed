@@ -67,6 +67,8 @@ namespace TopSpeed.Core
         private int _multiplayerVehicleIndex;
         private bool _multiplayerAutomaticTransmission = true;
         private bool _audioLoopActive;
+        private bool _textInputPromptActive;
+        private Action<TextInputResult>? _textInputPromptCallback;
         public bool IsModalInputActive { get; private set; }
         internal int LoopIntervalMs => IsMenuState(_state) ? 15 : 8;
 
@@ -105,7 +107,7 @@ namespace TopSpeed.Core
                 _speech,
                 _settings,
                 new MultiplayerConnector(),
-                PromptTextInput,
+                BeginPromptTextInput,
                 SaveSettings,
                 EnterMenuState,
                 SetSession,
@@ -139,6 +141,8 @@ namespace TopSpeed.Core
             _raceInput.SetOverlayInputBlocked(
                 _state == AppState.MultiplayerRace && _multiplayerCoordinator.Questions.HasActiveOverlayQuestion);
 
+            UpdateTextInputPrompt();
+
             switch (_state)
             {
                 case AppState.Logo:
@@ -167,15 +171,18 @@ namespace TopSpeed.Core
                     }
                     break;
                 case AppState.Menu:
-                    if (UpdateModalOperations())
-                        break;
-
                     if (_session != null)
                     {
                         ProcessMultiplayerPackets();
                         if (_state != AppState.Menu)
                             break;
                     }
+
+                    if (_textInputPromptActive)
+                        break;
+
+                    if (UpdateModalOperations())
+                        break;
 
                     if (_inputMapping.IsActive)
                     {
@@ -229,19 +236,44 @@ namespace TopSpeed.Core
             return _multiplayerCoordinator.UpdatePendingOperations();
         }
 
-        private TextInputResult PromptTextInput(string prompt, string? initialValue,
-            SpeechService.SpeakFlag speakFlag = SpeechService.SpeakFlag.None, bool speakBeforeInput = true)
+        private void BeginPromptTextInput(
+            string prompt,
+            string? initialValue,
+            SpeechService.SpeakFlag speakFlag,
+            bool speakBeforeInput,
+            Action<TextInputResult> onCompleted)
         {
+            if (onCompleted == null)
+                throw new ArgumentNullException(nameof(onCompleted));
+
+            if (_textInputPromptActive)
+            {
+                onCompleted(TextInputResult.CreateCancelled());
+                return;
+            }
+
             if (speakBeforeInput)
                 _speech.Speak(prompt, speakFlag);
 
-            IsModalInputActive = true;
+            _textInputPromptActive = true;
+            _textInputPromptCallback = onCompleted;
             _input.Suspend();
-            var result = _window.ReceiveTextInput(initialValue);
-            _input.Resume();
-            IsModalInputActive = false;
+            _window.ShowTextInput(initialValue);
+        }
 
-            return result;
+        private void UpdateTextInputPrompt()
+        {
+            if (!_textInputPromptActive)
+                return;
+
+            if (!_window.TryConsumeTextInput(out var result))
+                return;
+
+            var callback = _textInputPromptCallback;
+            _textInputPromptCallback = null;
+            _textInputPromptActive = false;
+            _input.Resume();
+            callback?.Invoke(result);
         }
 
         private void StartCalibrationSequence(string? returnMenuId = null)

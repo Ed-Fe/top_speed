@@ -1,6 +1,5 @@
 using System;
 using System.Drawing;
-using System.Threading;
 using System.Windows.Forms;
 
 namespace TopSpeed.Windowing
@@ -10,6 +9,7 @@ namespace TopSpeed.Windowing
         private const int WmSysCommand = 0x0112;
         private const int ScKeyMenu = 0xF100;
         private readonly TextBox _inputBox;
+        private readonly object _textInputLock = new object();
         private bool _submitPending;
         private bool _cancelPending;
         private string _submittedText = string.Empty;
@@ -43,9 +43,12 @@ namespace TopSpeed.Windowing
 
         public void ShowTextInput(string? initialText)
         {
-            _submittedText = string.Empty;
-            _submitPending = false;
-            _cancelPending = false;
+            lock (_textInputLock)
+            {
+                _submittedText = string.Empty;
+                _submitPending = false;
+                _cancelPending = false;
+            }
             RunOnUiThread(() =>
             {
                 _inputBox.Text = initialText ?? string.Empty;
@@ -66,58 +69,42 @@ namespace TopSpeed.Windowing
 
         public bool TryConsumeTextInput(out TextInputResult result)
         {
-            if (_submitPending)
+            lock (_textInputLock)
             {
-                _submitPending = false;
-                result = TextInputResult.Submitted(_submittedText);
-                return true;
-            }
-            if (_cancelPending)
-            {
-                _cancelPending = false;
-                result = TextInputResult.CreateCancelled();
-                return true;
+                if (_submitPending)
+                {
+                    _submitPending = false;
+                    result = TextInputResult.Submitted(_submittedText);
+                    return true;
+                }
+                if (_cancelPending)
+                {
+                    _cancelPending = false;
+                    result = TextInputResult.CreateCancelled();
+                    return true;
+                }
             }
             result = default;
             return false;
-        }
-
-        public TextInputResult ReceiveTextInput(string? initialText, bool password = false)
-        {
-            _submittedText = string.Empty;
-            _submitPending = false;
-            _cancelPending = false;
-            RunOnUiThread(() => _inputBox.PasswordChar = password ? '*' : '\0');
-            ShowTextInput(initialText);
-            Application.DoEvents();
-            while (!_submitPending && !_cancelPending)
-            {
-                Application.DoEvents();
-                Thread.Sleep(1);
-            }
-            RunOnUiThread(() => _inputBox.PasswordChar = '\0');
-            if (_cancelPending)
-            {
-                _cancelPending = false;
-                return TextInputResult.CreateCancelled();
-            }
-            _submitPending = false;
-            return TextInputResult.Submitted(_submittedText);
         }
 
         private void OnInputKeyDown(object? sender, KeyEventArgs e)
         {
             if (e.KeyCode == Keys.Enter)
             {
-                _submittedText = _inputBox.Text;
-                _submitPending = true;
+                lock (_textInputLock)
+                {
+                    _submittedText = _inputBox.Text;
+                    _submitPending = true;
+                }
                 HideTextInput();
                 e.Handled = true;
                 e.SuppressKeyPress = true;
             }
             else if (e.KeyCode == Keys.Escape)
             {
-                _cancelPending = true;
+                lock (_textInputLock)
+                    _cancelPending = true;
                 HideTextInput();
                 e.Handled = true;
                 e.SuppressKeyPress = true;
