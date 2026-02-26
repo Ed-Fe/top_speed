@@ -153,7 +153,7 @@ namespace TopSpeed.Vehicles
         private static readonly float[] MiniCooperSRatios = { 3.92f, 2.14f, 1.39f, 1.09f, 0.89f, 0.76f };
         private static readonly float[] Mustang69Ratios = { 2.32f, 1.69f, 1.29f, 1.00f };
         private static readonly float[] CamryRatios = { 5.25f, 3.03f, 1.95f, 1.46f, 1.22f, 1.00f, 0.95f, 0.90f };
-        private static readonly float[] AventadorRatios = { 3.91f, 2.44f, 1.81f, 1.46f, 1.19f, 1.06f, 0.98f };
+        private static readonly float[] AventadorRatios = { 3.91f, 2.10f, 1.55f, 1.30f, 1.19f, 1.06f, 0.98f };
         private static readonly float[] Bmw3SeriesRatios = { 4.71f, 3.14f, 2.11f, 1.67f, 1.29f, 1.00f, 0.96f, 0.90f };
         private static readonly float[] SprinterRatios = { 4.3772f, 2.8586f, 1.9206f, 1.3684f, 1.0000f, 0.9200f, 0.8500f };
         private static readonly float[] Zx10rRatios = { 2.600f, 2.222f, 1.944f, 1.722f, 1.550f, 1.391f };
@@ -187,7 +187,7 @@ namespace TopSpeed.Vehicles
                 idleRpm: 950f, maxRpm: 9000f, revLimiter: 8500f, autoShiftRpm: 8500f * 0.92f, engineBraking: 0.22f,
                 massKg: 1450f, drivetrainEfficiency: 0.85f, engineBrakingTorqueNm: 465f, tireGripCoefficient: 1.05f,
                 peakTorqueNm: 465f, peakTorqueRpm: 6250f, idleTorqueNm: 465f * 0.3f, redlineTorqueNm: 465f * 0.6f,
-                dragCoefficient: 0.33f, frontalAreaM2: 2.0f, rollingResistanceCoefficient: 0.015f, launchRpm: 3000f,
+                dragCoefficient: 0.30f, frontalAreaM2: 2.0f, rollingResistanceCoefficient: 0.015f, launchRpm: 3000f,
                 finalDriveRatio: 3.97f, reverseMaxSpeedKph: 35f, reversePowerFactor: 0.55f, reverseGearRatio: 3.2f,
                 tireCircumferenceM: TireCircumferenceM(325, 30, 21), lateralGripCoefficient: 1.0f, highSpeedStability: 0f,
                 wheelbaseM: 2.456f, maxSteerDeg: 35f, widthM: 1.852f, lengthM: 4.572f,
@@ -253,15 +253,15 @@ namespace TopSpeed.Vehicles
             new OfficialVehicleSpec(
                 CarType.Vehicle7, "Lamborghini Aventador",
                 hasWipers: 1, surfaceTractionFactor: 0.08f, deceleration: 0.80f, topSpeed: 282.0f,
-                idleFreq: 6000, topFreq: 26000, shiftFreq: 21000, gears: 7, steering: 2.10f, steeringFactor: 65,
+                idleFreq: 6000, topFreq: 26000, shiftFreq: 21000, gears: 7, steering: 1.90f, steeringFactor: 65,
                 idleRpm: 1000f, maxRpm: 8500f, revLimiter: 8000f, autoShiftRpm: 8000f * 0.92f, engineBraking: 0.20f,
                 massKg: 1640f, drivetrainEfficiency: 0.80f, engineBrakingTorqueNm: 720f, tireGripCoefficient: 1.05f,
-                peakTorqueNm: 720f, peakTorqueRpm: 5500f, idleTorqueNm: 720f * 0.3f, redlineTorqueNm: 720f * 0.6f,
-                dragCoefficient: 0.33f, frontalAreaM2: 2.0f, rollingResistanceCoefficient: 0.015f, launchRpm: 3000f,
+                peakTorqueNm: 720f, peakTorqueRpm: 6200f, idleTorqueNm: 720f * 0.22f, redlineTorqueNm: 720f * 0.58f,
+                dragCoefficient: 0.30f, frontalAreaM2: 2.0f, rollingResistanceCoefficient: 0.015f, launchRpm: 2400f,
                 finalDriveRatio: 2.86f, reverseMaxSpeedKph: 35f, reversePowerFactor: 0.55f, reverseGearRatio: 3.2f,
                 tireCircumferenceM: TireCircumferenceM(355, 25, 21), lateralGripCoefficient: 1.0f, highSpeedStability: 0f,
-                wheelbaseM: 2.700f, maxSteerDeg: 35f, widthM: 2.030f, lengthM: 4.780f,
-                powerFactor: 0.70f, gearRatios: AventadorRatios, brakeStrength: 1.0f,
+                wheelbaseM: 2.700f, maxSteerDeg: 25f, widthM: 2.030f, lengthM: 4.780f,
+                powerFactor: 0.56f, gearRatios: AventadorRatios, brakeStrength: 1.0f,
                 transmissionPolicy: Policy(5, true, Auto7Upshifts, upshiftRpmFraction: 0.90f)),
 
             new OfficialVehicleSpec(
