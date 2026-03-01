@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using TopSpeed.Data;
 using TopSpeed.Input;
 using TopSpeed.Menu;
@@ -14,6 +15,7 @@ namespace TopSpeed.Game
         void IMenuActions.OpenSavedServersManager() => _multiplayerCoordinator.OpenSavedServersManager();
         void IMenuActions.BeginManualServerEntry() => _multiplayerCoordinator.BeginManualServerEntry();
         void IMenuActions.SpeakMessage(string text) => _speech.Speak(text);
+        void IMenuActions.ShowMessageDialog(string title, string caption, IReadOnlyList<string> items) => ShowMessageDialog(title, caption, items);
         void IMenuActions.SpeakNotImplemented() => _speech.Speak("Not implemented yet.");
         void IMenuActions.BeginServerPortEntry() => _multiplayerCoordinator.BeginServerPortEntry();
         void IMenuActions.RestoreDefaults() => RestoreDefaults();
@@ -25,5 +27,29 @@ namespace TopSpeed.Game
         void IMenuActions.ApplyAudioSettings() => ApplyAudioSettings();
         void IMenuActions.BeginMapping(InputMappingMode mode, InputAction action) => _inputMapping.BeginMapping(mode, action);
         string IMenuActions.FormatMappingValue(InputAction action, InputMappingMode mode) => _inputMapping.FormatMappingValue(action, mode);
+
+        private void ShowMessageDialog(string title, string caption, IReadOnlyList<string> items)
+        {
+            var dialogItems = new List<DialogItem>();
+            if (items != null)
+            {
+                for (var i = 0; i < items.Count; i++)
+                {
+                    var line = items[i];
+                    if (string.IsNullOrWhiteSpace(line))
+                        continue;
+                    dialogItems.Add(new DialogItem(line));
+                }
+            }
+
+            var dialog = new Dialog(
+                title ?? string.Empty,
+                caption,
+                QuestionId.Ok,
+                dialogItems,
+                onResult: null,
+                new DialogButton(QuestionId.Ok, "OK"));
+            _dialogs.Show(dialog);
+        }
     }
 }

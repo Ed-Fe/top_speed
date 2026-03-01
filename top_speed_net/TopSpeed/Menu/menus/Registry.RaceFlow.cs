@@ -167,28 +167,66 @@ namespace TopSpeed.Menu
         private void OpenCustomTrackMenuOrAnnounce(RaceMode mode)
         {
             var customTracks = _selection.GetCustomTrackInfo();
+            var issues = _selection.ConsumeCustomTrackIssues();
             if (customTracks.Count == 0)
             {
-                _actions.SpeakMessage("No custom tracks found.");
+                if (issues.Count > 0)
+                {
+                    _actions.ShowMessageDialog(
+                        "Custom track errors",
+                        "Some custom track files are invalid and were skipped.",
+                        issues);
+                }
+                else
+                {
+                    _actions.SpeakMessage("No custom tracks found.");
+                }
                 return;
             }
 
             _setup.TrackCategory = TrackCategory.CustomTrack;
             RefreshCustomTrackMenu(mode);
             _menu.Push(TrackMenuId(mode, TrackCategory.CustomTrack));
+
+            if (issues.Count > 0)
+            {
+                _actions.ShowMessageDialog(
+                    "Custom track errors",
+                    "Some custom track files are invalid and were skipped.",
+                    issues);
+            }
         }
 
         private void OpenCustomVehicleMenuOrAnnounce(RaceMode mode)
         {
             var customVehicles = _selection.GetCustomVehicleInfo();
+            var issues = _selection.ConsumeCustomVehicleIssues();
             if (customVehicles.Count == 0)
             {
-                _actions.SpeakMessage("No custom vehicles found.");
+                if (issues.Count > 0)
+                {
+                    _actions.ShowMessageDialog(
+                        "Custom vehicle errors",
+                        "Some custom vehicle files are invalid and were skipped.",
+                        issues);
+                }
+                else
+                {
+                    _actions.SpeakMessage("No custom vehicles found.");
+                }
                 return;
             }
 
             RefreshCustomVehicleMenu(mode);
             _menu.Push(CustomVehicleMenuId(mode));
+
+            if (issues.Count > 0)
+            {
+                _actions.ShowMessageDialog(
+                    "Custom vehicle errors",
+                    "Some custom vehicle files are invalid and were skipped.",
+                    issues);
+            }
         }
 
         private static string TrackMenuId(RaceMode mode, TrackCategory category)

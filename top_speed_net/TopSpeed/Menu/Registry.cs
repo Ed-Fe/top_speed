@@ -13,6 +13,7 @@ namespace TopSpeed.Menu
         void OpenSavedServersManager();
         void BeginManualServerEntry();
         void SpeakMessage(string text);
+        void ShowMessageDialog(string title, string caption, IReadOnlyList<string> items);
         void SpeakNotImplemented();
         void BeginServerPortEntry();
         void RestoreDefaults();
