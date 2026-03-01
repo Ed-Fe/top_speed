@@ -1,7 +1,6 @@
 using TopSpeed.Common;
 using TopSpeed.Data;
 using TopSpeed.Vehicles;
-using TS.Audio;
 
 namespace TopSpeed.Race
 {
@@ -60,7 +59,7 @@ namespace TopSpeed.Race
             if (automatic && position != _positionComment)
             {
                 if (position - 1 < _soundPosition.Length)
-                    SpeakIfAvailable(_soundPosition[position - 1], true);
+                    SpeakIfLoaded(_soundPosition[position - 1], true);
                 _positionComment = position;
                 return;
             }
@@ -69,7 +68,7 @@ namespace TopSpeed.Race
             {
                 if (inFrontNumber != -1 && inFrontNumber < _soundPlayerNr.Length)
                 {
-                    SpeakIfAvailable(_soundPlayerNr[inFrontNumber], true);
+                    SpeakIfLoaded(_soundPlayerNr[inFrontNumber], true);
                     var sound = _randomSounds[(int)RandomSound.Front][Algorithm.RandomInt(_totalRandomSounds[(int)RandomSound.Front])];
                     if (sound != null)
                         Speak(sound, true);
@@ -80,7 +79,7 @@ namespace TopSpeed.Race
             {
                 if (onTailNumber != -1 && onTailNumber < _soundPlayerNr.Length)
                 {
-                    SpeakIfAvailable(_soundPlayerNr[onTailNumber], true);
+                    SpeakIfLoaded(_soundPlayerNr[onTailNumber], true);
                     var sound = _randomSounds[(int)RandomSound.Tail][Algorithm.RandomInt(_totalRandomSounds[(int)RandomSound.Tail])];
                     if (sound != null)
                         Speak(sound, true);
@@ -91,16 +90,9 @@ namespace TopSpeed.Race
             if (inFrontNumber == -1 && onTailNumber == -1 && !automatic)
             {
                 if (position - 1 < _soundPosition.Length)
-                    SpeakIfAvailable(_soundPosition[position - 1], true);
+                    SpeakIfLoaded(_soundPosition[position - 1], true);
                 _positionComment = position;
             }
-        }
-
-        private void SpeakIfAvailable(AudioSourceHandle? sound, bool queue = false)
-        {
-            if (sound == null)
-                return;
-            Speak(sound, queue);
         }
 
         private int CalculatePlayerPerc(int player)

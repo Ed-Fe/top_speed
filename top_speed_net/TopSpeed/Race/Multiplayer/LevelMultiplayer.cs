@@ -113,26 +113,14 @@ namespace TopSpeed.Race
             var positionY = CalculateGridStartY(_playerNumber, rowSpacing, StartLineY);
             _car.SetPosition(positionX, positionY);
 
-            for (var i = 0; i < MaxPlayers; i++)
-            {
-                _soundPlayerNr[i] = LoadLanguageSound($"race\\info\\player{i + 1}");
-                _soundPosition[i] = LoadLanguageSound($"race\\info\\youarepos{i + 1}");
-                _soundFinished[i] = LoadLanguageSound($"race\\info\\finished{i + 1}");
-            }
-
-            LoadRandomSounds(RandomSound.Front, "race\\info\\front");
-            LoadRandomSounds(RandomSound.Tail, "race\\info\\tail");
-
-            _soundYouAre = LoadLanguageSound("race\\youare");
-            _soundPlayer = LoadLanguageSound("race\\player");
-            _soundTheme4 = LoadLanguageSound("music\\theme4", streamFromDisk: false);
-            _soundPause = LoadLanguageSound("race\\pause");
-            _soundUnpause = LoadLanguageSound("race\\unpause");
-            _soundTheme4.SetVolumePercent((int)Math.Round(_settings.MusicVolume * 100f));
-
-            Speak(_soundYouAre);
-            Speak(_soundPlayer);
-            Speak(_soundNumbers[_playerNumber + 1]);
+            LoadPositionSounds(
+                _soundPlayerNr,
+                _soundPosition,
+                _soundFinished,
+                MaxPlayers,
+                MaxPlayers);
+            LoadRaceUiSounds(out _soundYouAre, out _soundPlayer);
+            SpeakRaceIntro(_soundYouAre, _soundPlayer, _playerNumber + 1);
 
             _currentState = PlayerState.AwaitingStart;
             TrySendRace(_session.SendPlayerState(_currentState), "awaiting-start state");
@@ -149,12 +137,11 @@ namespace TopSpeed.Race
             _remoteMediaTransfers.Clear();
             _snapshotFrames.Clear();
 
-            for (var i = 0; i < _soundPosition.Length; i++)
-            {
-                DisposeSound(_soundPosition[i]);
-                DisposeSound(_soundPlayerNr[i]);
-                DisposeSound(_soundFinished[i]);
-            }
+            DisposePositionSounds(
+                _soundPlayerNr,
+                _soundPosition,
+                _soundFinished,
+                _soundPosition.Length);
 
             DisposeSound(_soundYouAre);
             DisposeSound(_soundPlayer);
@@ -187,8 +174,7 @@ namespace TopSpeed.Race
             HandlePlayerLapProgress(
                 onPlayerFinished: () =>
                 {
-                    SpeakIfAvailable(_soundPlayerNr[_playerNumber], true);
-                    SpeakIfAvailable(_soundFinished[Math.Min(_positionFinish++, _soundFinished.Length - 1)], true);
+                    AnnounceFinishOrder(_soundPlayerNr, _soundFinished, _playerNumber, ref _positionFinish);
                     if (!_sentFinish)
                     {
                         _sentFinish = true;
@@ -202,29 +188,11 @@ namespace TopSpeed.Race
             HandleCoreRaceMetricsRequests(includeFinishedRaceTime: true);
             HandleCommentRequests(elapsed, Comment, ref _lastComment, ref _infoKeyReleased);
 
-            if (_input.TryGetPlayerInfo(out var infoPlayer)
-                && _acceptPlayerInfo
-                && infoPlayer >= 0
-                && infoPlayer < MaxPlayers
-                && HasPlayerInRace(infoPlayer))
-            {
-                _acceptPlayerInfo = false;
-                SpeakText(GetVehicleNameForPlayer(infoPlayer));
-                PushEvent(RaceEventType.AcceptPlayerInfo, 0.5f);
-            }
-
-            if (_input.TryGetPlayerPosition(out var positionPlayer)
-                && _acceptPlayerInfo
-                && _started
-                && positionPlayer >= 0
-                && positionPlayer < MaxPlayers
-                && HasPlayerInRace(positionPlayer))
-            {
-                _acceptPlayerInfo = false;
-                var perc = CalculatePlayerPerc(positionPlayer);
-                SpeakText(FormatPercentageText(string.Empty, perc));
-                PushEvent(RaceEventType.AcceptPlayerInfo, 0.5f);
-            }
+            HandlePlayerInfoRequests(
+                MaxPlayers - 1,
+                HasPlayerInRace,
+                GetVehicleNameForPlayer,
+                CalculatePlayerPerc);
 
             HandlePlayerNumberRequest(_playerNumber);
             HandleGeneralInfoRequests(ref _pauseKeyReleased);

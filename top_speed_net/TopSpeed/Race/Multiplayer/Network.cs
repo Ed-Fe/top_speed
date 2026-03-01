@@ -57,12 +57,7 @@ namespace TopSpeed.Race
             remote.Finished = true;
             remote.State = PlayerState.Finished;
             remote.Player.Stop();
-
-            if ((int)finished.PlayerNumber < _soundPlayerNr.Length)
-            {
-                SpeakIfAvailable(_soundPlayerNr[finished.PlayerNumber], true);
-                SpeakIfAvailable(_soundFinished[System.Math.Min(_positionFinish++, _soundFinished.Length - 1)], true);
-            }
+            AnnounceFinishOrder(_soundPlayerNr, _soundFinished, finished.PlayerNumber, ref _positionFinish);
         }
 
         public void RemoveRemotePlayer(byte playerNumber)
@@ -150,11 +145,7 @@ namespace TopSpeed.Race
             {
                 remote.Finished = true;
                 remote.Player.Stop();
-                if ((int)playerNumber < _soundPlayerNr.Length)
-                {
-                    SpeakIfAvailable(_soundPlayerNr[playerNumber], true);
-                    SpeakIfAvailable(_soundFinished[System.Math.Min(_positionFinish++, _soundFinished.Length - 1)], true);
-                }
+                AnnounceFinishOrder(_soundPlayerNr, _soundFinished, playerNumber, ref _positionFinish);
             }
 
             remote.Player.ApplyNetworkState(
