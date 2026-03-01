@@ -78,10 +78,9 @@ namespace TopSpeed.Race
         protected bool _started;
         protected bool _finished;
         protected bool _engineStarted;
-        protected bool _acceptPlayerInfo;
-        protected bool _acceptCurrentRaceInfo;
         protected float _sayTimeLength;
         protected float _speakTime;
+        protected float _nextRequestInfoAt;
         protected int _unkeyQueue;
         protected Track.Road _currentRoad;
         protected long _oldStopwatchMs;
@@ -156,8 +155,6 @@ namespace TopSpeed.Race
             _unkeyQueue = 0;
             _highscore = 0;
             _sayTimeLength = 0.0f;
-            _acceptPlayerInfo = true;
-            _acceptCurrentRaceInfo = true;
 
             _track = trackData == null
                 ? Track.Load(track, audio)

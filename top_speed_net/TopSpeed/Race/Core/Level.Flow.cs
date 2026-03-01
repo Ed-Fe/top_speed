@@ -7,6 +7,8 @@ namespace TopSpeed.Race
 {
     internal abstract partial class Level
     {
+        private const float RequestInfoThrottleSeconds = 1.0f;
+
         protected void BeginFrame(float raceStartDelaySeconds = DefaultRaceStartDelaySeconds)
         {
             EnsureStartSequenceScheduled(raceStartDelaySeconds);
@@ -53,11 +55,9 @@ namespace TopSpeed.Race
 
         protected void HandlePlayerNumberRequest(int playerNumber)
         {
-            if (_input.GetPlayerNumber() && _acceptCurrentRaceInfo)
+            if (_input.GetPlayerNumber())
             {
-                _acceptCurrentRaceInfo = false;
                 QueueSound(_soundNumbers[playerNumber + 1]);
-                PushEvent(RaceEventType.AcceptCurrentRaceInfo, _soundNumbers[playerNumber + 1].GetLengthSeconds());
             }
         }
 
@@ -93,11 +93,12 @@ namespace TopSpeed.Race
 
             if (_input.GetRequestInfo() && infoKeyReleased)
             {
-                if (lastComment > 2.0f)
+                infoKeyReleased = false;
+                if (_elapsedTotal >= _nextRequestInfoAt)
                 {
-                    infoKeyReleased = false;
                     comment(false);
                     lastComment = 0.0f;
+                    _nextRequestInfoAt = _elapsedTotal + RequestInfoThrottleSeconds;
                 }
             }
             else if (!_input.GetRequestInfo() && !infoKeyReleased)
@@ -167,12 +168,6 @@ namespace TopSpeed.Race
                     _unkeyQueue--;
                     if (_unkeyQueue == 0)
                         Speak(_soundUnkey[Algorithm.RandomInt(MaxUnkeys)]);
-                    break;
-                case RaceEventType.AcceptPlayerInfo:
-                    _acceptPlayerInfo = true;
-                    break;
-                case RaceEventType.AcceptCurrentRaceInfo:
-                    _acceptCurrentRaceInfo = true;
                     break;
                 default:
                     OnUnhandledRaceEvent(e);

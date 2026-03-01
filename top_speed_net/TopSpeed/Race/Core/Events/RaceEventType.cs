@@ -7,8 +7,6 @@ namespace TopSpeed.Race.Events
         RaceFinish,
         PlaySound,
         PlayRadioSound,
-        RaceTimeFinalize,
-        AcceptPlayerInfo,
-        AcceptCurrentRaceInfo
+        RaceTimeFinalize
     }
 }

@@ -53,11 +53,9 @@ namespace TopSpeed.Race
 
             HandleCoreRaceMetricsRequests(includeFinishedRaceTime: false);
 
-            if (_input.TryGetPlayerInfo(out var player) && _acceptPlayerInfo && player == 0)
+            if (_input.TryGetPlayerInfo(out var player) && player == 0)
             {
-                _acceptPlayerInfo = false;
                 SpeakText(GetVehicleName());
-                PushEvent(RaceEventType.AcceptPlayerInfo, 0.5f);
             }
 
             HandleGeneralInfoRequests(ref _pauseKeyReleased);

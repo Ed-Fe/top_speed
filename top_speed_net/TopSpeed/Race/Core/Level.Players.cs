@@ -87,27 +87,21 @@ namespace TopSpeed.Race
             Func<int, int> playerPercent)
         {
             if (_input.TryGetPlayerInfo(out var infoPlayer)
-                && _acceptPlayerInfo
                 && infoPlayer >= 0
                 && infoPlayer <= maxPlayerIndex
                 && hasPlayer(infoPlayer))
             {
-                _acceptPlayerInfo = false;
                 SpeakText(vehicleNameForPlayer(infoPlayer));
-                PushEvent(Events.RaceEventType.AcceptPlayerInfo, 0.5f);
             }
 
             if (_input.TryGetPlayerPosition(out var positionPlayer)
-                && _acceptPlayerInfo
                 && _started
                 && positionPlayer >= 0
                 && positionPlayer <= maxPlayerIndex
                 && hasPlayer(positionPlayer))
             {
-                _acceptPlayerInfo = false;
                 var perc = playerPercent(positionPlayer);
                 SpeakText(FormatPercentageText(string.Empty, perc));
-                PushEvent(Events.RaceEventType.AcceptPlayerInfo, 0.5f);
             }
         }
 
