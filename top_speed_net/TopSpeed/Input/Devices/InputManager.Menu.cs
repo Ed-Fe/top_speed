@@ -41,7 +41,7 @@ namespace TopSpeed.Input
                 return false;
 
             if (TryGetJoystickState(out var state))
-                return state.X < -MenuBackThreshold || state.Pov4;
+                return IsMenuBackHeld(state);
 
             return false;
         }
@@ -151,7 +151,7 @@ namespace TopSpeed.Input
             {
                 _gamepad.Update();
                 var state = _gamepad.State;
-                return state.X < -MenuBackThreshold || state.Pov4;
+                return IsMenuBackHeld(state);
             }
 
             if (!_joystickEnabled)
@@ -161,7 +161,16 @@ namespace TopSpeed.Input
             if (joystick == null || !joystick.IsAvailable)
                 return false;
 
-            return joystick.Update() && (joystick.State.X < -MenuBackThreshold || joystick.State.Pov4);
+            return joystick.Update() && IsMenuBackHeld(joystick.State);
+        }
+
+        private bool IsMenuBackHeld(JoystickStateSnapshot state)
+        {
+            if (state.Pov4)
+                return true;
+            if (IgnoreJoystickAxesForMenuNavigation)
+                return false;
+            return state.X < -MenuBackThreshold;
         }
     }
 }

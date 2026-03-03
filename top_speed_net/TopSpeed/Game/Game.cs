@@ -42,6 +42,7 @@ namespace TopSpeed.Game
         private readonly InputManager _input;
         private readonly MenuManager _menu;
         private readonly DialogManager _dialogs;
+        private readonly ChoiceDialogManager _choices;
         private readonly RaceSettings _settings;
         private readonly IReadOnlyList<SettingsIssue> _settingsIssues;
         private readonly RaceInput _raceInput;
@@ -107,6 +108,7 @@ namespace TopSpeed.Game
             _setup = new RaceSetup();
             _menu = new MenuManager(_audio, _speech, () => _settings.UsageHints);
             _dialogs = new DialogManager(_menu);
+            _choices = new ChoiceDialogManager(_menu, message => _speech.Speak(message));
             _menu.SetWrapNavigation(_settings.MenuWrapNavigation);
             _menu.SetMenuSoundPreset(_settings.MenuSoundPreset);
             _menu.SetMenuNavigatePanning(_settings.MenuNavigatePanning);
@@ -153,6 +155,8 @@ namespace TopSpeed.Game
                 _raceInput.Run(_input.Current, joystick, deltaSeconds);
             else
                 _raceInput.Run(_input.Current, deltaSeconds);
+
+            TryShowDeviceChoiceDialog();
 
             _raceInput.SetOverlayInputBlocked(
                 _state == AppState.MultiplayerRace &&

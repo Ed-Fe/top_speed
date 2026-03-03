@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Threading;
 using SharpDX;
 
@@ -15,10 +16,10 @@ namespace TopSpeed.Input
                 return false;
             _lastJoystickScan = now;
 
-            JoystickDevice? newJoystick;
+            List<JoystickChoice> discovered;
             try
             {
-                newJoystick = new JoystickDevice(_directInput, _windowHandle);
+                discovered = JoystickDevice.Discover(_directInput);
             }
             catch (SharpDXException)
             {
@@ -29,17 +30,25 @@ namespace TopSpeed.Input
                 return false;
             }
 
-            JoystickDevice? oldJoystick;
-            var available = newJoystick.IsAvailable;
+            if (discovered.Count == 0)
+                return false;
+
+            if (discovered.Count == 1)
+            {
+                lock (_hidLock)
+                {
+                    _pendingJoystickChoices = null;
+                }
+                return TryAttachJoystick(discovered[0]);
+            }
+
             lock (_hidLock)
             {
-                oldJoystick = _joystick;
-                _joystick = available ? newJoystick : null;
+                _pendingJoystickChoices = discovered;
+                _activeJoystickIsRacingWheel = false;
             }
-            oldJoystick?.Dispose();
-            if (!available)
-                newJoystick.Dispose();
-            return available;
+            ClearJoystickDevice();
+            return true;
         }
 
         private void StartHidScan()
@@ -118,8 +127,43 @@ namespace TopSpeed.Input
             {
                 oldJoystick = _joystick;
                 _joystick = null;
+                _activeJoystickIsRacingWheel = false;
             }
             oldJoystick?.Dispose();
+        }
+
+        private bool TryAttachJoystick(JoystickChoice choice)
+        {
+            JoystickDevice? newJoystick;
+            try
+            {
+                newJoystick = new JoystickDevice(_directInput, _windowHandle, choice);
+            }
+            catch (SharpDXException)
+            {
+                return false;
+            }
+            catch (NullReferenceException)
+            {
+                return false;
+            }
+
+            if (!newJoystick.IsAvailable)
+            {
+                newJoystick.Dispose();
+                return false;
+            }
+
+            JoystickDevice? oldJoystick;
+            lock (_hidLock)
+            {
+                oldJoystick = _joystick;
+                _joystick = newJoystick;
+                _activeJoystickIsRacingWheel = choice.IsRacingWheel;
+            }
+
+            oldJoystick?.Dispose();
+            return true;
         }
     }
 }

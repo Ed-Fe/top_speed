@@ -34,17 +34,18 @@ namespace TopSpeed.Menu
 
             if (input.TryGetJoystickState(out var joystick))
             {
-                if (!_hasJoystickCenter && MenuInputUtil.IsNearCenter(joystick))
+                var useAxes = !input.IgnoreJoystickAxesForMenuNavigation;
+                if (!_hasJoystickCenter && MenuInputUtil.IsNearCenter(joystick, useAxes))
                 {
                     _joystickCenter = joystick;
                     _hasJoystickCenter = true;
                 }
 
                 var previous = _hasPrevJoystick ? _prevJoystick : _joystickCenter;
-                state.MoveUp |= MenuInputUtil.WasJoystickUpPressed(joystick, previous);
-                state.MoveDown |= MenuInputUtil.WasJoystickDownPressed(joystick, previous);
-                state.Activate |= MenuInputUtil.WasJoystickActivatePressed(joystick, previous);
-                state.Back |= MenuInputUtil.WasJoystickBackPressed(joystick, previous);
+                state.MoveUp |= MenuInputUtil.WasJoystickUpPressed(joystick, previous, useAxes);
+                state.MoveDown |= MenuInputUtil.WasJoystickDownPressed(joystick, previous, useAxes);
+                state.Activate |= MenuInputUtil.WasJoystickActivatePressed(joystick, previous, useAxes);
+                state.Back |= MenuInputUtil.WasJoystickBackPressed(joystick, previous, useAxes);
                 _prevJoystick = joystick;
                 _hasPrevJoystick = true;
             }

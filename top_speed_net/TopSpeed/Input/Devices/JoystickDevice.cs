@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using SharpDX;
 using SharpDX.DirectInput;
 
@@ -8,19 +9,26 @@ namespace TopSpeed.Input
     internal sealed class JoystickDevice : IVibrationDevice
     {
         private readonly Joystick? _joystick;
+        private readonly Guid _instanceGuid;
+        private readonly string _displayName;
+        private readonly bool _isRacingWheel;
         private JoystickStateSnapshot _state;
         private readonly Dictionary<VibrationEffectType, ForceFeedbackEffect> _effects = new Dictionary<VibrationEffectType, ForceFeedbackEffect>();
         private bool _connected;
 
-        public JoystickDevice(DirectInput directInput, IntPtr windowHandle)
+        public JoystickDevice(DirectInput directInput, IntPtr windowHandle, JoystickChoice choice)
         {
-            var devices = directInput.GetDevices(DeviceType.Gamepad, DeviceEnumerationFlags.AttachedOnly);
-            if (devices.Count == 0)
-                devices = directInput.GetDevices(DeviceType.Joystick, DeviceEnumerationFlags.AttachedOnly);
-            if (devices.Count == 0)
+            if (choice == null)
+                throw new ArgumentNullException(nameof(choice));
+
+            _instanceGuid = choice.InstanceGuid;
+            _displayName = choice.DisplayName;
+            _isRacingWheel = choice.IsRacingWheel;
+
+            if (_instanceGuid == Guid.Empty)
                 return;
 
-            _joystick = new Joystick(directInput, devices[0].InstanceGuid);
+            _joystick = new Joystick(directInput, _instanceGuid);
             _joystick.SetCooperativeLevel(windowHandle, CooperativeLevel.Exclusive | CooperativeLevel.Background);
             _joystick.Properties.BufferSize = 128;
 
@@ -45,6 +53,10 @@ namespace TopSpeed.Input
         }
 
         public bool IsAvailable => _joystick != null && _connected;
+
+        public Guid InstanceGuid => _instanceGuid;
+        public string DisplayName => _displayName;
+        public bool IsRacingWheel => _isRacingWheel;
 
         internal Joystick? Device => _joystick;
 
@@ -127,6 +139,68 @@ namespace TopSpeed.Input
             {
             }
             _joystick.Dispose();
+        }
+
+        public static List<JoystickChoice> Discover(DirectInput directInput)
+        {
+            var discovered = new Dictionary<Guid, JoystickChoice>();
+            AddDeviceType(discovered, directInput, DeviceType.Driving, treatAsWheel: true);
+            AddDeviceType(discovered, directInput, DeviceType.Joystick, treatAsWheel: false);
+            AddDeviceType(discovered, directInput, DeviceType.Gamepad, treatAsWheel: false);
+
+            var result = new List<JoystickChoice>(discovered.Values);
+            result.Sort((left, right) => string.Compare(left.DisplayName, right.DisplayName, StringComparison.CurrentCultureIgnoreCase));
+            return result;
+        }
+
+        private static void AddDeviceType(
+            Dictionary<Guid, JoystickChoice> discovered,
+            DirectInput directInput,
+            DeviceType deviceType,
+            bool treatAsWheel)
+        {
+            var devices = directInput.GetDevices(deviceType, DeviceEnumerationFlags.AttachedOnly);
+            for (var i = 0; i < devices.Count; i++)
+            {
+                var device = devices[i];
+                var instanceGuid = device.InstanceGuid;
+                if (instanceGuid == Guid.Empty)
+                    continue;
+
+                var displayName = BuildDisplayName(device);
+                var wheelByName = LooksLikeWheel(displayName) || LooksLikeWheel(device.ProductName);
+                var isWheel = treatAsWheel || wheelByName;
+
+                if (discovered.TryGetValue(instanceGuid, out var existing))
+                {
+                    if (!existing.IsRacingWheel && isWheel)
+                        discovered[instanceGuid] = new JoystickChoice(existing.InstanceGuid, existing.DisplayName, true);
+                    continue;
+                }
+
+                discovered.Add(instanceGuid, new JoystickChoice(instanceGuid, displayName, isWheel));
+            }
+        }
+
+        private static string BuildDisplayName(DeviceInstance device)
+        {
+            if (!string.IsNullOrWhiteSpace(device.InstanceName))
+                return device.InstanceName.Trim();
+            if (!string.IsNullOrWhiteSpace(device.ProductName))
+                return device.ProductName.Trim();
+            return "Controller " + device.InstanceGuid.ToString("D", CultureInfo.InvariantCulture);
+        }
+
+        private static bool LooksLikeWheel(string? name)
+        {
+            if (string.IsNullOrWhiteSpace(name))
+                return false;
+
+            var value = (name ?? string.Empty).ToLowerInvariant();
+            return value.Contains("wheel")
+                || value.Contains("steering")
+                || value.Contains("pedal")
+                || value.Contains("racing");
         }
     }
 }

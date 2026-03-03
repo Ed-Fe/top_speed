@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Threading;
 using SharpDX.DirectInput;
 
@@ -26,9 +27,12 @@ namespace TopSpeed.Input
         private Thread? _hidScanThread;
         private CancellationTokenSource? _hidScanCts;
         private bool _joystickEnabled;
+        private List<JoystickChoice>? _pendingJoystickChoices;
+        private bool _activeJoystickIsRacingWheel;
         private bool _disposed;
 
         public InputState Current => _current;
+        public bool IgnoreJoystickAxesForMenuNavigation => _joystickEnabled && !_gamepad.IsAvailable && _activeJoystickIsRacingWheel;
 
         public event Action? JoystickScanTimedOut;
 
@@ -62,11 +66,25 @@ namespace TopSpeed.Input
             if (!_joystickEnabled)
             {
                 StopHidScan();
+                lock (_hidLock)
+                {
+                    _pendingJoystickChoices = null;
+                }
                 ClearJoystickDevice();
                 return;
             }
 
-            if (!_gamepad.IsAvailable && GetJoystickDevice() == null)
+            if (_gamepad.IsAvailable)
+            {
+                lock (_hidLock)
+                {
+                    _pendingJoystickChoices = null;
+                    _activeJoystickIsRacingWheel = false;
+                }
+                return;
+            }
+
+            if (GetJoystickDevice() == null)
                 StartHidScan();
         }
 
@@ -76,6 +94,74 @@ namespace TopSpeed.Input
             {
                 return _joystick != null && _joystick.IsAvailable ? _joystick : null;
             }
+        }
+
+        public bool TryGetPendingJoystickChoices(out IReadOnlyList<JoystickChoice> choices)
+        {
+            lock (_hidLock)
+            {
+                if (_pendingJoystickChoices == null || _pendingJoystickChoices.Count == 0)
+                {
+                    choices = Array.Empty<JoystickChoice>();
+                    return false;
+                }
+
+                choices = _pendingJoystickChoices.ToArray();
+                return true;
+            }
+        }
+
+        public bool TrySelectJoystick(Guid instanceGuid)
+        {
+            if (instanceGuid == Guid.Empty)
+                return false;
+
+            List<JoystickChoice>? pendingChoices;
+            lock (_hidLock)
+            {
+                pendingChoices = _pendingJoystickChoices == null
+                    ? null
+                    : new List<JoystickChoice>(_pendingJoystickChoices);
+            }
+
+            JoystickChoice? selected = null;
+            if (pendingChoices != null)
+            {
+                for (var i = 0; i < pendingChoices.Count; i++)
+                {
+                    if (pendingChoices[i].InstanceGuid == instanceGuid)
+                    {
+                        selected = pendingChoices[i];
+                        break;
+                    }
+                }
+            }
+
+            if (selected == null)
+            {
+                var discovered = JoystickDevice.Discover(_directInput);
+                for (var i = 0; i < discovered.Count; i++)
+                {
+                    if (discovered[i].InstanceGuid == instanceGuid)
+                    {
+                        selected = discovered[i];
+                        break;
+                    }
+                }
+            }
+
+            if (selected == null)
+                return false;
+
+            if (!TryAttachJoystick(selected))
+                return false;
+
+            lock (_hidLock)
+            {
+                _pendingJoystickChoices = null;
+            }
+            StopHidScan();
+            return true;
         }
     }
 }
