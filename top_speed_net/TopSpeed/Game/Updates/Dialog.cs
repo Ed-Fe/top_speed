@@ -36,8 +36,7 @@ namespace TopSpeed.Game
             var items = new List<DialogItem>
             {
                 new DialogItem("The update download is complete."),
-                new DialogItem("Select OK to close the game, install the update, and restart Top Speed."),
-                new DialogItem("If you close this dialog with Escape, no automatic install will run.")
+                new DialogItem("Press OK to close the game and install the update.")
             };
 
             var dialog = new Dialog(
