@@ -121,8 +121,8 @@ namespace TopSpeed.Core.Multiplayer
                 new DialogItem(string.IsNullOrWhiteSpace(notice.Message)
                     ? "The server and client are compatible, but not an exact match."
                     : notice.Message),
-                new DialogItem($"Your client version: {notice.ClientVersion}"),
-                new DialogItem($"Server supported versions: {notice.ServerSupported.MinSupported} to {notice.ServerSupported.MaxSupported}")
+                new DialogItem($"Your client protocol version: {notice.ClientVersion}"),
+                new DialogItem($"Server supported protocol versions: {notice.ServerSupported.MinSupported} to {notice.ServerSupported.MaxSupported}")
             };
 
             var dialog = new Dialog(

@@ -128,15 +128,15 @@ namespace TopSpeed.Server.Network
                     return "Protocol compatibility verified.";
                 case ProtocolCompatStatus.CompatibleDowngrade:
                     if (clientVersion > serverRange.MaxSupported)
-                        return $"Your client version is newer than this server: {clientVersion}. This server supports versions {serverRange}. You can continue, but some features may behave differently or may not work at all.";
+                        return $"Your client protocol version is newer than this server: {clientVersion}. This server supports protocol versions {serverRange}. You can continue, but some features may behave differently or may not work at all.";
 
-                    return $"Your client version is older than this server: {clientVersion}. This server supports versions {serverRange}. You can continue, but some features may behave differently or may not work at all.";
+                    return $"Your client protocol version is older than this server: {clientVersion}. This server supports protocol versions {serverRange}. You can continue, but some features may behave differently or may not work at all.";
                 case ProtocolCompatStatus.ClientTooOld:
-                    return $"Your client version is out-of-date: {clientVersion}. This server supports versions {serverRange}. Please update your client.";
+                    return $"Your client protocol version is out-of-date: {clientVersion}. This server supports protocol versions {serverRange}. Please update your client.";
                 case ProtocolCompatStatus.ClientTooNew:
-                    return $"Your client version is too new: {clientVersion} and does not match server version.  This server supports versions {serverRange}. The server needs an update.";
+                    return $"Your client protocol version is too new: {clientVersion} and does not match this server protocol. This server supports protocol versions {serverRange}. The server needs an update.";
                 default:
-                    return $"Your client version is {clientVersion}. This server supports versions {serverRange}.";
+                    return $"Your client protocol version is {clientVersion}. This server supports protocol versions {serverRange}.";
             }
         }
     }

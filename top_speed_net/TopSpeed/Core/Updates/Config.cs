@@ -37,10 +37,10 @@ namespace TopSpeed.Core.Updates
 
         public static GameVersion CurrentVersion =>
             new GameVersion(
-                ProtocolVersionInfo.CurrentYear,
-                ProtocolVersionInfo.CurrentMonth,
-                ProtocolVersionInfo.CurrentDay,
-                ProtocolVersionInfo.CurrentRevision);
+                ReleaseVersionInfo.ClientYear,
+                ReleaseVersionInfo.ClientMonth,
+                ReleaseVersionInfo.ClientDay,
+                ReleaseVersionInfo.ClientRevision);
 
         public string BuildExpectedAssetName(string version)
         {

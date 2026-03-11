@@ -125,7 +125,7 @@ namespace TopSpeed.Network
         private static string BuildProtocolRefusalFallback(PacketProtocolWelcome welcome)
         {
             var range = new ProtocolRange(welcome.ServerMinSupported, welcome.ServerMaxSupported);
-            return $"Your client version is {ProtocolProfile.Current}. This server supports versions {range}.";
+            return $"Your client protocol version is {ProtocolProfile.Current}. This server supports protocol versions {range}.";
         }
 
         private readonly struct ResolveResult

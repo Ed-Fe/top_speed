@@ -23,20 +23,27 @@ if (-not (Test-Path -LiteralPath $infoFile)) {
 
 $source = Get-Content -LiteralPath $versionFile -Raw
 
-function Get-ConstantValue([string]$name) {
+function Get-ConstantValue([string]$typeName, [string]$name) {
+    $typePattern = "public\s+static\s+class\s+$typeName\s*\{([\s\S]*?)\}"
+    $typeMatch = [System.Text.RegularExpressions.Regex]::Match($source, $typePattern)
+    if (-not $typeMatch.Success) {
+        Fail "Commit blocked: could not find '$typeName' in VersionInfo.cs."
+    }
+
+    $typeBody = $typeMatch.Groups[1].Value
     $pattern = "public\s+const\s+\w+\s+$name\s*=\s*(\d+)\s*;"
-    $match = [System.Text.RegularExpressions.Regex]::Match($source, $pattern)
+    $match = [System.Text.RegularExpressions.Regex]::Match($typeBody, $pattern)
     if (-not $match.Success) {
-        Fail "Commit blocked: could not read '$name' from ProtocolVersionInfo."
+        Fail "Commit blocked: could not read '$name' from $typeName."
     }
 
     return [int]$match.Groups[1].Value
 }
 
-$year = Get-ConstantValue "CurrentYear"
-$month = Get-ConstantValue "CurrentMonth"
-$day = Get-ConstantValue "CurrentDay"
-$revision = Get-ConstantValue "CurrentRevision"
+$year = Get-ConstantValue "ReleaseVersionInfo" "ClientYear"
+$month = Get-ConstantValue "ReleaseVersionInfo" "ClientMonth"
+$day = Get-ConstantValue "ReleaseVersionInfo" "ClientDay"
+$revision = Get-ConstantValue "ReleaseVersionInfo" "ClientRevision"
 $expectedVersion = "$year.$month.$day.$revision"
 
 try {
@@ -53,7 +60,7 @@ if ([string]::IsNullOrWhiteSpace($actualVersion)) {
 if ($actualVersion -ne $expectedVersion) {
     $message = @"
 Commit blocked: client version mismatch.
-- ProtocolVersionInfo current version: $expectedVersion
+- ReleaseVersionInfo client version: $expectedVersion
 - info.json version: $actualVersion
 
 Fix: update info.json 'version' to '$expectedVersion' and commit again.

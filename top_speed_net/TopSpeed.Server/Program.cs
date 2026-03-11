@@ -27,15 +27,18 @@ namespace TopSpeed.Server
                 ? BuildLogFilePath(configuredLogFile!)
                 : null;
             using var logger = new Logger(levels, logFile, writeToConsole: loggingEnabled);
+            var serverRelease = $"{ReleaseVersionInfo.ServerYear}.{ReleaseVersionInfo.ServerMonth}.{ReleaseVersionInfo.ServerDay} (r{ReleaseVersionInfo.ServerRevision})";
             if (loggingEnabled)
             {
                 logger.InfoAlways($"Logging enabled. Levels: {FormatLogLevels(levels)}. File: {(string.IsNullOrWhiteSpace(logFile) ? "none" : logFile)}.");
+                logger.InfoAlways($"Server release: {serverRelease}.");
                 logger.InfoAlways($"Protocol current: {ProtocolProfile.Current}. Supported: {ProtocolProfile.ServerSupported}.");
                 logger.Info("TopSpeed Server starting.");
             }
             else
             {
                 ConsoleSink.WriteLine("TopSpeed Server starting...");
+                ConsoleSink.WriteLine($"Server release: {serverRelease}");
                 ConsoleSink.WriteLine($"Protocol version: {ProtocolProfile.Current}");
             }
 
