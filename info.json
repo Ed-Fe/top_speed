@@ -1,13 +1,12 @@
 {
-  "version": "2026.3.11.1",
-  "serverVersion": "2026.3.11.1",
+  "version": "2026.3.11.2",
+  "serverVersion": "2026.3.11.2",
   "changes": [
-    "Release packaging now uses versioned zip names.",
-    "Updater integration checks this file to detect new versions.",
-    "General fixes and refactoring from the latest development cycle."
+    "Added a turn-end cue: when a turn transitions back to straight, a ding sound is played.",
+    "Manual shifting now announces the selected gear immediately (including reverse).",
+    "Multiplayer history buffers were improved and room history no longer includes non-audible room created/removed entries."
   ],
   "serverChanges": [
-    "Server package versioning is now independent from the game package.",
-    "Workflow now uses serverVersion for server artifact names."
+    "Protocol metadata revision updated to 2026.3.11.2 to stay aligned with shared compatibility versioning."
   ]
 }

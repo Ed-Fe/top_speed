@@ -119,8 +119,10 @@ namespace TopSpeed.Race
 
         protected void RunPlayerVehicleStep(float elapsed, Action? afterTrackUpdate = null)
         {
+            var previousGear = _car.Gear;
             UpdateVehiclePanels(elapsed);
             _car.Run(elapsed);
+            TryAnnounceManualGearShift(previousGear);
             _track.Run(_car.PositionY);
             afterTrackUpdate?.Invoke();
             var road = _track.RoadAtPosition(_car.PositionY);
@@ -128,6 +130,21 @@ namespace TopSpeed.Race
             UpdateAudioListener(elapsed);
             if (_track.NextRoad(_car.PositionY, _car.Speed, (int)_settings.CurveAnnouncement, out var nextRoad))
                 CallNextRoad(nextRoad);
+        }
+
+        private void TryAnnounceManualGearShift(int previousGear)
+        {
+            if (!_manualTransmission || !_started || _finished)
+                return;
+
+            var currentGear = _car.Gear;
+            if (currentGear == previousGear)
+                return;
+
+            if (!_input.GetGearUp() && !_input.GetGearDown())
+                return;
+
+            SpeakText(currentGear <= 0 ? "Reverse" : currentGear.ToString());
         }
 
         protected bool HandlePlayerLapProgress(Action onPlayerFinished, bool announceLapsToGo = true)

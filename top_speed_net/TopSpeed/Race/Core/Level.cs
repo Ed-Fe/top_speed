@@ -104,6 +104,7 @@ namespace TopSpeed.Race
         protected AudioSourceHandle? _soundPause;
         protected AudioSourceHandle? _soundUnpause;
         protected AudioSourceHandle? _soundTrackName;
+        protected AudioSourceHandle? _soundTurnEndDing;
 
         protected bool ExitRequested { get; set; }
         protected bool PauseRequested { get; set; }
@@ -226,6 +227,7 @@ namespace TopSpeed.Race
             }
 
             _soundTrackName = LoadTrackNameSound(_track.TrackName);
+            _soundTurnEndDing = LoadLegacySound("ding.ogg");
         }
 
         public bool Started => _started;

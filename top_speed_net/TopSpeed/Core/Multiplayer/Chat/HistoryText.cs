@@ -34,10 +34,6 @@ namespace TopSpeed.Core.Multiplayer.Chat
             var roomName = NormalizeRoomName(roomEvent.RoomName);
             switch (roomEvent.Kind)
             {
-                case RoomEventKind.RoomCreated:
-                    return $"{roomName} was created.";
-                case RoomEventKind.RoomRemoved:
-                    return $"{roomName} was removed.";
                 case RoomEventKind.RaceStarted:
                     return $"Race started in {roomName}.";
                 case RoomEventKind.RaceStopped:

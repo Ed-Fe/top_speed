@@ -118,6 +118,13 @@ namespace TopSpeed.Race
 
         protected void CallNextRoad(Track.Road nextRoad)
         {
+            if (_currentRoad.Type != TrackType.Straight &&
+                nextRoad.Type == TrackType.Straight &&
+                _soundTurnEndDing != null)
+            {
+                QueueSound(_soundTurnEndDing);
+            }
+
             if ((int)_settings.Copilot > 0 && nextRoad.Type != TrackType.Straight)
             {
                 var index = (int)nextRoad.Type - 1;
