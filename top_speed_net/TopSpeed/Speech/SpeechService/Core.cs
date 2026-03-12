@@ -5,7 +5,7 @@ using System.Threading;
 
 namespace TopSpeed.Speech
 {
-    internal sealed partial class SpeechService : IDisposable
+    internal sealed partial class SpeechService : IGameSpeech
     {
         public enum SpeakFlag
         {

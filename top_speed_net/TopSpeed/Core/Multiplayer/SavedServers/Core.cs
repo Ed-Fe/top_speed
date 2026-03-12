@@ -7,10 +7,17 @@ namespace TopSpeed.Core.Multiplayer
     {
         public void OpenSavedServersManager()
         {
+            _savedServersFlow.OpenSavedServersManager();
+        }
+
+        internal void OpenSavedServersManagerCore()
+        {
             RebuildSavedServersMenu();
-            _menu.Push(MultiplayerSavedServersMenuId);
+            _menu.Push(MultiplayerMenuKeys.SavedServers);
         }
 
         private IReadOnlyList<SavedServerEntry> SavedServers => _settings.SavedServers ?? (_settings.SavedServers = new List<SavedServerEntry>());
     }
 }
+
+

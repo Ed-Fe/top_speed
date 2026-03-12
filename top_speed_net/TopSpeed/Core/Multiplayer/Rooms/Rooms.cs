@@ -5,7 +5,8 @@ namespace TopSpeed.Core.Multiplayer
 {
     internal sealed partial class MultiplayerCoordinator
     {
-        public bool IsInRoom => _roomState.InRoom;
+        public bool IsInRoom => _roomsFlow.IsInRoom;
+        internal bool IsInRoomCore => _state.Rooms.CurrentRoom.InRoom;
 
         private const string MultiplayerPingShortcutActionId = "multiplayer_ping";
         private const string MultiplayerChatShortcutActionId = "multiplayer_chat";
@@ -13,32 +14,37 @@ namespace TopSpeed.Core.Multiplayer
 
         private static readonly string[] MultiplayerPingShortcutMenus =
         {
-            MultiplayerLobbyMenuId,
-            MultiplayerRoomBrowserMenuId,
-            MultiplayerCreateRoomMenuId,
-            MultiplayerRoomControlsMenuId,
-            MultiplayerRoomPlayersMenuId,
-            MultiplayerRoomOptionsMenuId,
-            MultiplayerRoomTrackTypeMenuId,
-            MultiplayerRoomTrackRaceMenuId,
-            MultiplayerRoomTrackAdventureMenuId,
-            MultiplayerLoadoutVehicleMenuId,
-            MultiplayerLoadoutTransmissionMenuId
+            MultiplayerMenuKeys.Lobby,
+            MultiplayerMenuKeys.RoomBrowser,
+            MultiplayerMenuKeys.CreateRoom,
+            MultiplayerMenuKeys.RoomControls,
+            MultiplayerMenuKeys.RoomPlayers,
+            MultiplayerMenuKeys.RoomOptions,
+            MultiplayerMenuKeys.RoomTrackType,
+            MultiplayerMenuKeys.RoomTrackRace,
+            MultiplayerMenuKeys.RoomTrackAdventure,
+            MultiplayerMenuKeys.LoadoutVehicle,
+            MultiplayerMenuKeys.LoadoutTransmission
         };
 
         private static readonly string[] MultiplayerRoomShortcutMenus =
         {
-            MultiplayerRoomControlsMenuId,
-            MultiplayerRoomPlayersMenuId,
-            MultiplayerRoomOptionsMenuId,
-            MultiplayerRoomTrackTypeMenuId,
-            MultiplayerRoomTrackRaceMenuId,
-            MultiplayerRoomTrackAdventureMenuId,
-            MultiplayerLoadoutVehicleMenuId,
-            MultiplayerLoadoutTransmissionMenuId
+            MultiplayerMenuKeys.RoomControls,
+            MultiplayerMenuKeys.RoomPlayers,
+            MultiplayerMenuKeys.RoomOptions,
+            MultiplayerMenuKeys.RoomTrackType,
+            MultiplayerMenuKeys.RoomTrackRace,
+            MultiplayerMenuKeys.RoomTrackAdventure,
+            MultiplayerMenuKeys.LoadoutVehicle,
+            MultiplayerMenuKeys.LoadoutTransmission
         };
 
         public void ConfigureMenuCloseHandlers()
+        {
+            _roomsFlow.ConfigureMenuCloseHandlers();
+        }
+
+        internal void ConfigureMenuCloseHandlersCore()
         {
             _menu.RegisterSharedShortcutAction(
                 MultiplayerPingShortcutActionId,
@@ -64,37 +70,37 @@ namespace TopSpeed.Core.Multiplayer
                     new[] { MultiplayerPingShortcutActionId, MultiplayerChatShortcutActionId, MultiplayerRoomChatShortcutActionId });
             }
 
-            _menu.SetCloseHandler(MultiplayerLobbyMenuId, _ =>
+            _menu.SetCloseHandler(MultiplayerMenuKeys.Lobby, _ =>
             {
                 OpenDisconnectConfirmation();
                 return true;
             });
 
-            _menu.SetCloseHandler(MultiplayerRoomControlsMenuId, _ =>
+            _menu.SetCloseHandler(MultiplayerMenuKeys.RoomControls, _ =>
             {
                 OpenLeaveRoomConfirmation();
                 return true;
             });
 
-            _menu.SetCloseHandler(MultiplayerSavedServerFormMenuId, _ =>
+            _menu.SetCloseHandler(MultiplayerMenuKeys.SavedServerForm, _ =>
             {
                 CloseSavedServerForm();
                 return true;
             });
 
-            _menu.SetCloseHandler(MultiplayerRoomOptionsMenuId, _ =>
+            _menu.SetCloseHandler(MultiplayerMenuKeys.RoomOptions, _ =>
             {
                 CancelRoomOptionsChanges();
                 return false;
             });
 
-            _menu.SetCloseHandler(MultiplayerLoadoutTransmissionMenuId, _ =>
+            _menu.SetCloseHandler(MultiplayerMenuKeys.LoadoutTransmission, _ =>
             {
                 OpenLoadoutExitConfirmation();
                 return true;
             });
 
-            _menu.SetCloseHandler(MultiplayerLoadoutVehicleMenuId, _ =>
+            _menu.SetCloseHandler(MultiplayerMenuKeys.LoadoutVehicle, _ =>
             {
                 OpenLoadoutExitConfirmation();
                 return true;
@@ -103,22 +109,35 @@ namespace TopSpeed.Core.Multiplayer
 
         public void ShowMultiplayerMenuAfterRace()
         {
-            if (_roomState.InRoom)
-                _menu.ShowRoot(MultiplayerRoomControlsMenuId);
+            _roomsFlow.ShowMultiplayerMenuAfterRace();
+        }
+
+        internal void ShowMultiplayerMenuAfterRaceCore()
+        {
+            if (_state.Rooms.CurrentRoom.InRoom)
+                _menu.ShowRoot(MultiplayerMenuKeys.RoomControls);
             else
-                _menu.ShowRoot(MultiplayerLobbyMenuId);
+                _menu.ShowRoot(MultiplayerMenuKeys.Lobby);
         }
 
         public void BeginRaceLoadoutSelection()
         {
-            if (!_roomState.InRoom)
+            _roomsFlow.BeginRaceLoadoutSelection();
+        }
+
+        internal void BeginRaceLoadoutSelectionCore()
+        {
+            if (!_state.Rooms.CurrentRoom.InRoom)
                 return;
 
-            _pendingLoadoutVehicleIndex = 0;
+            _state.Rooms.PendingLoadoutVehicleIndex = 0;
             RebuildLoadoutVehicleMenu();
             RebuildLoadoutTransmissionMenu();
-            _menu.ShowRoot(MultiplayerLoadoutVehicleMenuId);
+            _menu.ShowRoot(MultiplayerMenuKeys.LoadoutVehicle);
             _enterMenuState();
         }
     }
 }
+
+
+

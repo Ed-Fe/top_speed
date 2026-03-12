@@ -7,7 +7,7 @@ using TS.Audio;
 
 namespace TopSpeed.Audio
 {
-    internal sealed partial class AudioManager : IDisposable
+    internal sealed partial class AudioManager : IGameAudio
     {
         private readonly AudioSystem _system;
         private readonly AudioOutput _output;

@@ -8,7 +8,7 @@ using TopSpeed.Input.Devices.Controller;
 
 namespace TopSpeed.Input
 {
-    internal sealed partial class InputManager : IDisposable
+    internal sealed partial class InputManager : IGameInput
     {
         private const int JoystickRescanIntervalMs = 1000;
         private const int JoystickScanTimeoutMs = 5000;

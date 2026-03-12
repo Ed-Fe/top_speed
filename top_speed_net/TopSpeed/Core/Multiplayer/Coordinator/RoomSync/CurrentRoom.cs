@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using TopSpeed.Core.Multiplayer.Chat;
 using TopSpeed.Protocol;
 
@@ -6,28 +7,32 @@ namespace TopSpeed.Core.Multiplayer
 {
     internal sealed partial class MultiplayerCoordinator
     {
-        private bool ApplyCurrentRoomEvent(PacketRoomEvent roomEvent, out bool beginLoadout, out bool localHostChanged)
+        private bool ApplyCurrentRoomEvent(
+            RoomEventInfo roomEvent,
+            List<PacketEffect> effects,
+            out bool beginLoadout,
+            out bool localHostChanged)
         {
             beginLoadout = false;
             localHostChanged = false;
 
-            if (!_roomState.InRoom || _roomState.RoomId != roomEvent.RoomId)
+            if (!_state.Rooms.CurrentRoom.InRoom || _state.Rooms.CurrentRoom.RoomId != roomEvent.RoomId)
                 return false;
 
-            var previousIsHost = _roomState.IsHost;
+            var previousIsHost = _state.Rooms.CurrentRoom.IsHost;
             var session = SessionOrNull();
 
-            _roomState.RoomVersion = roomEvent.RoomVersion;
+            _state.Rooms.CurrentRoom.RoomVersion = roomEvent.RoomVersion;
             if (!string.IsNullOrWhiteSpace(roomEvent.RoomName))
-                _roomState.RoomName = roomEvent.RoomName;
-            _roomState.HostPlayerId = roomEvent.HostPlayerId;
-            _roomState.RoomType = roomEvent.RoomType;
-            _roomState.PlayersToStart = roomEvent.PlayersToStart;
-            _roomState.RaceStarted = roomEvent.RaceStarted;
-            _roomState.PreparingRace = roomEvent.PreparingRace;
-            _roomState.TrackName = roomEvent.TrackName ?? string.Empty;
-            _roomState.Laps = roomEvent.Laps;
-            _roomState.IsHost = session != null && roomEvent.HostPlayerId == session.PlayerId;
+                _state.Rooms.CurrentRoom.RoomName = roomEvent.RoomName;
+            _state.Rooms.CurrentRoom.HostPlayerId = roomEvent.HostPlayerId;
+            _state.Rooms.CurrentRoom.RoomType = roomEvent.RoomType;
+            _state.Rooms.CurrentRoom.PlayersToStart = roomEvent.PlayersToStart;
+            _state.Rooms.CurrentRoom.RaceStarted = roomEvent.RaceStarted;
+            _state.Rooms.CurrentRoom.PreparingRace = roomEvent.PreparingRace;
+            _state.Rooms.CurrentRoom.TrackName = roomEvent.TrackName ?? string.Empty;
+            _state.Rooms.CurrentRoom.Laps = roomEvent.Laps;
+            _state.Rooms.CurrentRoom.IsHost = session != null && roomEvent.HostPlayerId == session.PlayerId;
             var localPlayerId = session?.PlayerId ?? 0u;
 
             switch (roomEvent.Kind)
@@ -35,8 +40,8 @@ namespace TopSpeed.Core.Multiplayer
                 case RoomEventKind.ParticipantJoined:
                     if (roomEvent.SubjectPlayerId != 0 && roomEvent.SubjectPlayerId != localPlayerId)
                     {
-                        PlayNetworkSound("room_join.ogg");
-                        AddRoomEventMessage(HistoryText.ParticipantJoined(roomEvent));
+                        effects.Add(PacketEffect.PlaySound("room_join.ogg"));
+                        effects.Add(PacketEffect.AddRoomEventHistory(HistoryText.ParticipantJoined(roomEvent)));
                     }
                     UpsertCurrentRoomParticipant(roomEvent);
                     break;
@@ -48,8 +53,8 @@ namespace TopSpeed.Core.Multiplayer
                 case RoomEventKind.ParticipantLeft:
                     if (roomEvent.SubjectPlayerId != 0 && roomEvent.SubjectPlayerId != localPlayerId)
                     {
-                        PlayNetworkSound("room_leave.ogg");
-                        AddRoomEventMessage(HistoryText.ParticipantLeft(roomEvent));
+                        effects.Add(PacketEffect.PlaySound("room_leave.ogg"));
+                        effects.Add(PacketEffect.AddRoomEventHistory(HistoryText.ParticipantLeft(roomEvent)));
                     }
                     RemoveCurrentRoomParticipant(roomEvent.SubjectPlayerId);
                     break;
@@ -67,19 +72,20 @@ namespace TopSpeed.Core.Multiplayer
                     break;
             }
 
-            localHostChanged = previousIsHost != _roomState.IsHost;
+            localHostChanged = previousIsHost != _state.Rooms.CurrentRoom.IsHost;
             if (localHostChanged &&
-                _roomState.IsHost &&
+                _state.Rooms.CurrentRoom.IsHost &&
                 (roomEvent.Kind == RoomEventKind.ParticipantLeft || roomEvent.Kind == RoomEventKind.HostChanged) &&
-                (roomEvent.PlayerCount <= 1 || (_roomState.Players?.Length ?? int.MaxValue) <= 1))
+                (roomEvent.PlayerCount <= 1 || (_state.Rooms.CurrentRoom.Players?.Length ?? int.MaxValue) <= 1))
             {
                 var hostText = HistoryText.BecameHost();
-                _speech.Speak(hostText);
-                AddRoomEventMessage(hostText);
+                effects.Add(PacketEffect.Speak(hostText));
+                effects.Add(PacketEffect.AddRoomEventHistory(hostText));
             }
 
-            _wasHost = _roomState.IsHost;
+            _state.Rooms.WasHost = _state.Rooms.CurrentRoom.IsHost;
             return true;
         }
     }
 }
+

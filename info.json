@@ -2,15 +2,7 @@
   "version": "2026.3.11.5",
   "serverVersion": "2026.3.11.4",
   "changes": [
-    "Room options in multiplayer now use a local draft with explicit confirm or cancel, so rapid option changes no longer send requests one by one.",
-    "Track selection in room options now uses a full track flow (race track, street adventure, random) instead of a radio toggle.",
-    "Closing loadout now asks whether to quit race preparation; choosing yes keeps the player in the room and excludes them from the current preparation round.",
-    "Room slot numbering was fixed to stay compact (no gaps like player 3 and player 5 when fewer players are present).",
-    "Fixed multiplayer room options behavior so the menu has no title and closing after track selection no longer exits the game.",
-    "Radio track navigation now announces only the current file name when moving between playlist items.",
-    "Fixed radio playlist behavior so folder playlists continue advancing between files even when you are outside the radio panel.",
-    "Opening a radio folder now resets the playlist to that folder and starts from its first entry using current playback state.",
-    "Turn-end ding timing was corrected to trigger exactly when the car exits a turn and enters a straight segment."
+    "Revert steering changes at high speed until a better model is implemented."
   ],
   "serverChanges": [
     "Added server support for race-preparation withdrawal, allowing a player to skip the current prep round without leaving the room.",

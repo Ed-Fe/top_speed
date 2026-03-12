@@ -23,7 +23,7 @@ namespace TopSpeed.Core.Multiplayer
                 SetCreateRoomPlayersToStart,
                 hint: "Choose the player capacity from 2 to 10. Use LEFT or RIGHT to change.")
             {
-                Hidden = _createRoomType == GameRoomType.OneOnOne
+                Hidden = _state.Rooms.CreateRoomType == GameRoomType.OneOnOne
             };
 
             var items = new List<MenuItem>
@@ -36,9 +36,9 @@ namespace TopSpeed.Core.Multiplayer
                     hint: "Choose whether this room is a race with bots, a multiplayer race without bots, or a one-on-one game. Use LEFT or RIGHT to change."),
                 maxPlayersItem,
                 new MenuItem(
-                    () => string.IsNullOrWhiteSpace(_createRoomName)
+                    () => string.IsNullOrWhiteSpace(_state.Rooms.CreateRoomName)
                         ? "Room name, currently automatic"
-                        : $"Room name, currently {_createRoomName}",
+                        : $"Room name, currently {_state.Rooms.CreateRoomName}",
                     MenuAction.None,
                     onActivate: UpdateCreateRoomName,
                     hint: "Press ENTER to enter a room name. Leave it empty to use an automatic name."),
@@ -46,7 +46,7 @@ namespace TopSpeed.Core.Multiplayer
                 new MenuItem("Cancel room creation", MenuAction.Back)
             };
 
-            _menu.UpdateItems(MultiplayerCreateRoomMenuId, items, preserveSelection);
+            _menu.UpdateItems(MultiplayerMenuKeys.CreateRoom, items, preserveSelection);
         }
 
         private void OpenCreateRoomMenu()
@@ -59,14 +59,14 @@ namespace TopSpeed.Core.Multiplayer
 
             ResetCreateRoomDraft();
             RebuildCreateRoomMenu();
-            _menu.Push(MultiplayerCreateRoomMenuId);
+            _menu.Push(MultiplayerMenuKeys.CreateRoom);
         }
 
         private void UpdateCreateRoomName()
         {
             _promptTextInput(
                 "Enter a room name. Leave this field empty to use an automatic room name.",
-                _createRoomName,
+                _state.Rooms.CreateRoomName,
                 SpeechService.SpeakFlag.None,
                 true,
                 result =>
@@ -74,16 +74,16 @@ namespace TopSpeed.Core.Multiplayer
                     if (result.Cancelled)
                         return;
 
-                    _createRoomName = (result.Text ?? string.Empty).Trim();
+                    _state.Rooms.CreateRoomName = (result.Text ?? string.Empty).Trim();
                     RebuildCreateRoomMenu();
 
-                    if (string.IsNullOrWhiteSpace(_createRoomName))
+                    if (string.IsNullOrWhiteSpace(_state.Rooms.CreateRoomName))
                     {
                         _speech.Speak("Automatic room name selected.");
                         return;
                     }
 
-                    _speech.Speak($"Room name set to {_createRoomName}.");
+                    _speech.Speak($"Room name set to {_state.Rooms.CreateRoomName}.");
                 });
         }
 
@@ -96,20 +96,20 @@ namespace TopSpeed.Core.Multiplayer
                 return;
             }
 
-            var playersToStart = _createRoomPlayersToStart;
+            var playersToStart = _state.Rooms.CreateRoomPlayersToStart;
             if (playersToStart < 2 || playersToStart > ProtocolConstants.MaxRoomPlayersToStart)
                 playersToStart = 2;
-            if (_createRoomType == GameRoomType.OneOnOne)
+            if (_state.Rooms.CreateRoomType == GameRoomType.OneOnOne)
                 playersToStart = 2;
 
-            if (!TrySend(session.SendRoomCreate(_createRoomName, _createRoomType, playersToStart), "room create request"))
+            if (!TrySend(session.SendRoomCreate(_state.Rooms.CreateRoomName, _state.Rooms.CreateRoomType, playersToStart), "room create request"))
                 return;
-            _menu.ShowRoot(MultiplayerLobbyMenuId);
+            _menu.ShowRoot(MultiplayerMenuKeys.Lobby);
         }
 
         private int GetCreateRoomTypeIndex()
         {
-            return _createRoomType switch
+            return _state.Rooms.CreateRoomType switch
             {
                 GameRoomType.PlayersRace => 1,
                 GameRoomType.OneOnOne => 2,
@@ -119,24 +119,24 @@ namespace TopSpeed.Core.Multiplayer
 
         private void SetCreateRoomType(int index)
         {
-            _createRoomType = index switch
+            _state.Rooms.CreateRoomType = index switch
             {
                 2 => GameRoomType.OneOnOne,
                 1 => GameRoomType.PlayersRace,
                 _ => GameRoomType.BotsRace
             };
 
-            if (_createRoomType == GameRoomType.OneOnOne)
-                _createRoomPlayersToStart = 2;
+            if (_state.Rooms.CreateRoomType == GameRoomType.OneOnOne)
+                _state.Rooms.CreateRoomPlayersToStart = 2;
 
-            if (string.Equals(_menu.CurrentId, MultiplayerCreateRoomMenuId, StringComparison.Ordinal))
+            if (string.Equals(_menu.CurrentId, MultiplayerMenuKeys.CreateRoom, StringComparison.Ordinal))
                 RebuildCreateRoomMenu(preserveSelection: true);
         }
 
         private int GetCreateRoomPlayersToStartIndex()
         {
-            var playersToStart = _createRoomPlayersToStart;
-            if (_createRoomType == GameRoomType.OneOnOne)
+            var playersToStart = _state.Rooms.CreateRoomPlayersToStart;
+            if (_state.Rooms.CreateRoomType == GameRoomType.OneOnOne)
                 playersToStart = 2;
             if (playersToStart < 2 || playersToStart > ProtocolConstants.MaxRoomPlayersToStart)
                 playersToStart = 2;
@@ -145,23 +145,25 @@ namespace TopSpeed.Core.Multiplayer
 
         private void SetCreateRoomPlayersToStart(int index)
         {
-            if (_createRoomType == GameRoomType.OneOnOne)
+            if (_state.Rooms.CreateRoomType == GameRoomType.OneOnOne)
             {
-                _createRoomPlayersToStart = 2;
+                _state.Rooms.CreateRoomPlayersToStart = 2;
                 return;
             }
 
             var playersToStart = (byte)(index + 2);
             if (playersToStart < 2 || playersToStart > ProtocolConstants.MaxRoomPlayersToStart)
                 return;
-            _createRoomPlayersToStart = playersToStart;
+            _state.Rooms.CreateRoomPlayersToStart = playersToStart;
         }
 
         private void ResetCreateRoomDraft()
         {
-            _createRoomType = GameRoomType.BotsRace;
-            _createRoomPlayersToStart = 2;
-            _createRoomName = string.Empty;
+            _state.Rooms.CreateRoomType = GameRoomType.BotsRace;
+            _state.Rooms.CreateRoomPlayersToStart = 2;
+            _state.Rooms.CreateRoomName = string.Empty;
         }
     }
 }
+
+

@@ -46,11 +46,7 @@ namespace TopSpeed.Game
                         _timeTrial?.Dispose();
                         _timeTrial = null;
 
-                        var timeTrial = new TimeTrialMode(
-                            _audio,
-                            _speech,
-                            _settings,
-                            _raceInput,
+                        var timeTrial = _raceModeFactory.CreateTimeTrial(
                             track,
                             automatic,
                             _settings.NrOfLaps,
@@ -68,11 +64,7 @@ namespace TopSpeed.Game
                         _singleRace?.Dispose();
                         _singleRace = null;
 
-                        var singleRace = new SingleRaceMode(
-                            _audio,
-                            _speech,
-                            _settings,
-                            _raceInput,
+                        var singleRace = _raceModeFactory.CreateSingleRace(
                             track,
                             automatic,
                             _settings.NrOfLaps,

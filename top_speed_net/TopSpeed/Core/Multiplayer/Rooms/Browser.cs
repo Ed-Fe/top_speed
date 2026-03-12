@@ -16,12 +16,12 @@ namespace TopSpeed.Core.Multiplayer
                 return;
             }
 
-            if (_roomBrowserOpenPending)
+            if (_state.Rooms.IsRoomBrowserOpenPending)
                 return;
 
-            _roomBrowserOpenPending = true;
+            _state.Rooms.IsRoomBrowserOpenPending = true;
             if (!TrySend(session.SendRoomListRequest(), "room list request"))
-                _roomBrowserOpenPending = false;
+                _state.Rooms.IsRoomBrowserOpenPending = false;
         }
 
         private void JoinRoom(uint roomId)
@@ -39,7 +39,7 @@ namespace TopSpeed.Core.Multiplayer
         private void UpdateRoomBrowserMenu()
         {
             var items = new List<MenuItem>();
-            var rooms = _roomList.Rooms ?? Array.Empty<PacketRoomSummary>();
+            var rooms = _state.Rooms.RoomList.Rooms ?? Array.Empty<RoomSummaryInfo>();
             if (rooms.Length == 0)
             {
                 items.Add(new MenuItem("No game rooms found", MenuAction.None));
@@ -69,7 +69,9 @@ namespace TopSpeed.Core.Multiplayer
             }
 
             items.Add(new MenuItem("Return to multiplayer lobby", MenuAction.Back));
-            _menu.UpdateItems(MultiplayerRoomBrowserMenuId, items);
+            _menu.UpdateItems(MultiplayerMenuKeys.RoomBrowser, items);
         }
     }
 }
+
+

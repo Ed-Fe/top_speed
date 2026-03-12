@@ -13,7 +13,7 @@ namespace TopSpeed.Core.Multiplayer
 
         private void OpenLeaveRoomConfirmation()
         {
-            if (!_roomState.InRoom)
+            if (!_state.Rooms.CurrentRoom.InRoom)
             {
                 _speech.Speak("You are not currently inside a game room.");
                 return;
@@ -49,7 +49,7 @@ namespace TopSpeed.Core.Multiplayer
             if (!TrySend(session.SendRoomLeave(), "room leave request"))
                 return;
             _speech.Speak("Leaving game room.");
-            _menu.ShowRoot(MultiplayerLobbyMenuId);
+            _menu.ShowRoot(MultiplayerMenuKeys.Lobby);
         }
 
         private void StartGame()
@@ -61,7 +61,7 @@ namespace TopSpeed.Core.Multiplayer
                 return;
             }
 
-            if (!_roomState.InRoom || !_roomState.IsHost)
+            if (!_state.Rooms.CurrentRoom.InRoom || !_state.Rooms.CurrentRoom.IsHost)
             {
                 _speech.Speak("Only the host can start the game.");
                 return;
@@ -79,7 +79,7 @@ namespace TopSpeed.Core.Multiplayer
                 return;
             }
 
-            if (!_roomState.InRoom || !_roomState.IsHost || _roomState.RoomType != GameRoomType.BotsRace)
+            if (!_state.Rooms.CurrentRoom.InRoom || !_state.Rooms.CurrentRoom.IsHost || _state.Rooms.CurrentRoom.RoomType != GameRoomType.BotsRace)
             {
                 _speech.Speak("Bots can only be managed by the host in race-with-bots rooms.");
                 return;
@@ -97,7 +97,7 @@ namespace TopSpeed.Core.Multiplayer
                 return;
             }
 
-            if (!_roomState.InRoom || !_roomState.IsHost || _roomState.RoomType != GameRoomType.BotsRace)
+            if (!_state.Rooms.CurrentRoom.InRoom || !_state.Rooms.CurrentRoom.IsHost || _state.Rooms.CurrentRoom.RoomType != GameRoomType.BotsRace)
             {
                 _speech.Speak("Bots can only be managed by the host in race-with-bots rooms.");
                 return;
@@ -115,19 +115,19 @@ namespace TopSpeed.Core.Multiplayer
                 return;
             }
 
-            if (!_roomState.InRoom)
+            if (!_state.Rooms.CurrentRoom.InRoom)
             {
                 _speech.Speak("You are not in a game room.");
                 return;
             }
 
-            var vehicleIndex = Math.Max(0, Math.Min(VehicleCatalog.VehicleCount - 1, _pendingLoadoutVehicleIndex));
+            var vehicleIndex = Math.Max(0, Math.Min(VehicleCatalog.VehicleCount - 1, _state.Rooms.PendingLoadoutVehicleIndex));
             var selectedCar = (CarType)vehicleIndex;
             _setLocalMultiplayerLoadout(vehicleIndex, automaticTransmission);
             if (!TrySend(session.SendRoomPlayerReady(selectedCar, automaticTransmission), "ready state"))
                 return;
             _speech.Speak("Ready. Waiting for other players.");
-            _menu.ShowRoot(MultiplayerRoomControlsMenuId);
+            _menu.ShowRoot(MultiplayerMenuKeys.RoomControls);
         }
 
         private void OpenLoadoutExitConfirmation()
@@ -149,7 +149,7 @@ namespace TopSpeed.Core.Multiplayer
             if (resultId == QuitLoadoutQuestionYesId)
                 ConfirmQuitLoadout();
             else
-                _menu.ShowRoot(MultiplayerLoadoutVehicleMenuId);
+                _menu.ShowRoot(MultiplayerMenuKeys.LoadoutVehicle);
         }
 
         private void ConfirmQuitLoadout()
@@ -161,13 +161,13 @@ namespace TopSpeed.Core.Multiplayer
                 return;
             }
 
-            if (!_roomState.InRoom)
+            if (!_state.Rooms.CurrentRoom.InRoom)
             {
                 _speech.Speak("You are not in a game room.");
                 return;
             }
 
-            if (_roomState.PreparingRace)
+            if (_state.Rooms.CurrentRoom.PreparingRace)
             {
                 if (!TrySend(session.SendRoomPlayerWithdraw(), "race preparation withdrawal"))
                     return;
@@ -178,7 +178,9 @@ namespace TopSpeed.Core.Multiplayer
                 _speech.Speak("Returned to room controls.");
             }
 
-            _menu.ShowRoot(MultiplayerRoomControlsMenuId);
+            _menu.ShowRoot(MultiplayerMenuKeys.RoomControls);
         }
     }
 }
+
+

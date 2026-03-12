@@ -14,12 +14,11 @@ namespace TopSpeed.Core.Multiplayer
         private void StartConnectingPulse()
         {
             StopConnectingPulse();
-            var handle = GetNetworkSound(ref _connectingSound, "connecting.ogg");
+            var handle = GetNetworkSound(ref _state.Audio.ConnectingSound, "connecting.ogg");
             if (handle == null)
                 return;
 
-            _connectingSoundCts = new CancellationTokenSource();
-            var token = _connectingSoundCts.Token;
+            var token = _lifetime.BeginConnectingPulse();
             Task.Run(async () =>
             {
                 while (!token.IsCancellationRequested)
@@ -46,16 +45,7 @@ namespace TopSpeed.Core.Multiplayer
 
         private void StopConnectingPulse()
         {
-            _connectingSoundCts?.Cancel();
-            _connectingSoundCts?.Dispose();
-            _connectingSoundCts = null;
-            try
-            {
-                _connectingSound?.Stop();
-            }
-            catch
-            {
-            }
+            _lifetime.StopConnectingPulse();
         }
 
         private void PlayNetworkSound(string fileName)
@@ -65,30 +55,30 @@ namespace TopSpeed.Core.Multiplayer
 
             AudioSourceHandle? handle;
             if (string.Equals(fileName, "online.ogg", StringComparison.OrdinalIgnoreCase))
-                handle = GetNetworkSound(ref _onlineSound, fileName);
+                handle = GetNetworkSound(ref _state.Audio.OnlineSound, fileName);
             else if (string.Equals(fileName, "offline.ogg", StringComparison.OrdinalIgnoreCase))
-                handle = GetNetworkSound(ref _offlineSound, fileName);
+                handle = GetNetworkSound(ref _state.Audio.OfflineSound, fileName);
             else if (string.Equals(fileName, "connecting.ogg", StringComparison.OrdinalIgnoreCase))
-                handle = GetNetworkSound(ref _connectingSound, fileName);
+                handle = GetNetworkSound(ref _state.Audio.ConnectingSound, fileName);
             else if (string.Equals(fileName, "ping_start.ogg", StringComparison.OrdinalIgnoreCase))
-                handle = GetNetworkSound(ref _pingStartSound, fileName);
+                handle = GetNetworkSound(ref _state.Audio.PingStartSound, fileName);
             else if (string.Equals(fileName, "ping.ogg", StringComparison.OrdinalIgnoreCase) ||
                      string.Equals(fileName, "ping_stop.ogg", StringComparison.OrdinalIgnoreCase))
-                handle = GetNetworkSound(ref _pingSound, fileName);
+                handle = GetNetworkSound(ref _state.Audio.PingSound, fileName);
             else if (string.Equals(fileName, "room_created.ogg", StringComparison.OrdinalIgnoreCase))
-                handle = GetNetworkSound(ref _roomCreatedSound, fileName);
+                handle = GetNetworkSound(ref _state.Audio.RoomCreatedSound, fileName);
             else if (string.Equals(fileName, "room_join.ogg", StringComparison.OrdinalIgnoreCase))
-                handle = GetNetworkSound(ref _roomJoinSound, fileName);
+                handle = GetNetworkSound(ref _state.Audio.RoomJoinSound, fileName);
             else if (string.Equals(fileName, "room_leave.ogg", StringComparison.OrdinalIgnoreCase))
-                handle = GetNetworkSound(ref _roomLeaveSound, fileName);
+                handle = GetNetworkSound(ref _state.Audio.RoomLeaveSound, fileName);
             else if (string.Equals(fileName, "chat.ogg", StringComparison.OrdinalIgnoreCase))
-                handle = GetNetworkSound(ref _chatSound, fileName);
+                handle = GetNetworkSound(ref _state.Audio.ChatSound, fileName);
             else if (string.Equals(fileName, "room_chat.ogg", StringComparison.OrdinalIgnoreCase))
-                handle = GetNetworkSound(ref _roomChatSound, fileName);
+                handle = GetNetworkSound(ref _state.Audio.RoomChatSound, fileName);
             else if (string.Equals(fileName, "buffer_switch.ogg", StringComparison.OrdinalIgnoreCase))
-                handle = GetNetworkSound(ref _bufferSwitchSound, fileName);
+                handle = GetNetworkSound(ref _state.Audio.BufferSwitchSound, fileName);
             else if (string.Equals(fileName, "connected.ogg", StringComparison.OrdinalIgnoreCase))
-                handle = GetNetworkSound(ref _connectedSound, fileName);
+                handle = GetNetworkSound(ref _state.Audio.ConnectedSound, fileName);
             else
                 handle = null;
 
@@ -127,3 +117,5 @@ namespace TopSpeed.Core.Multiplayer
         }
     }
 }
+
+

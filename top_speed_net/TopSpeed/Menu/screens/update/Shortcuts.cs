@@ -5,7 +5,7 @@ namespace TopSpeed.Menu
 {
     internal sealed partial class MenuScreen
     {
-        private bool TryHandleShortcut(InputManager input)
+        private bool TryHandleShortcut(IGameInput input)
         {
             if (TryHandleShortcutList(ActiveView.Shortcuts, input))
                 return true;
@@ -14,7 +14,7 @@ namespace TopSpeed.Menu
             return TryHandleShortcutList(_sharedShortcuts, input);
         }
 
-        private bool TryHandleShortcutList(IReadOnlyList<MenuShortcut> shortcuts, InputManager input)
+        private bool TryHandleShortcutList(IReadOnlyList<MenuShortcut> shortcuts, IGameInput input)
         {
             if (shortcuts == null || shortcuts.Count == 0)
                 return false;
@@ -35,7 +35,7 @@ namespace TopSpeed.Menu
             return false;
         }
 
-        private bool TryHandleLetterNavigation(InputManager input)
+        private bool TryHandleLetterNavigation(IGameInput input)
         {
             if (_items.Count == 0)
                 return false;
@@ -59,3 +59,4 @@ namespace TopSpeed.Menu
         }
     }
 }
+

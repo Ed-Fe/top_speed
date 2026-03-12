@@ -7,10 +7,20 @@ namespace TopSpeed.Core.Multiplayer
     {
         public void BeginManualServerEntry()
         {
+            _connectionFlow.BeginManualServerEntry();
+        }
+
+        internal void BeginManualServerEntryCore()
+        {
             PromptServerAddressInput(_settings.LastServerAddress);
         }
 
         public void BeginServerPortEntry()
+        {
+            _connectionFlow.BeginServerPortEntry();
+        }
+
+        internal void BeginServerPortEntryCore()
         {
             var current = _settings.DefaultServerPort.ToString();
             _promptTextInput(
@@ -33,3 +43,4 @@ namespace TopSpeed.Core.Multiplayer
         }
     }
 }
+

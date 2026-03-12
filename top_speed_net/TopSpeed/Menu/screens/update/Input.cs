@@ -5,7 +5,7 @@ namespace TopSpeed.Menu
 {
     internal sealed partial class MenuScreen
     {
-        private bool TryHandlePendingTitle(InputManager input)
+        private bool TryHandlePendingTitle(IGameInput input)
         {
             if (!_titlePending)
                 return true;
@@ -18,7 +18,7 @@ namespace TopSpeed.Menu
             return true;
         }
 
-        private UpdateInputState CaptureInputState(InputManager input)
+        private UpdateInputState CaptureInputState(IGameInput input)
         {
             var tabPressed = input.WasPressed(Key.Tab);
             var shiftHeld = input.IsDown(Key.LeftShift) || input.IsDown(Key.RightShift);
@@ -62,7 +62,7 @@ namespace TopSpeed.Menu
             return state;
         }
 
-        private bool TryHandleHeldInputGate(InputManager input, UpdateInputState state, out MenuUpdateResult result)
+        private bool TryHandleHeldInputGate(IGameInput input, UpdateInputState state, out MenuUpdateResult result)
         {
             result = MenuUpdateResult.None;
             if (!_ignoreHeldInput)
@@ -168,3 +168,4 @@ namespace TopSpeed.Menu
         }
     }
 }
+

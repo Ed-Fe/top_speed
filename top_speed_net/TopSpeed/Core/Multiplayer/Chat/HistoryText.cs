@@ -19,17 +19,17 @@ namespace TopSpeed.Core.Multiplayer.Chat
             return "You are now host of this game.";
         }
 
-        public static string ParticipantJoined(PacketRoomEvent roomEvent)
+        public static string ParticipantJoined(RoomEventInfo roomEvent)
         {
             return $"{ResolvePlayerName(roomEvent)} joined the current room.";
         }
 
-        public static string ParticipantLeft(PacketRoomEvent roomEvent)
+        public static string ParticipantLeft(RoomEventInfo roomEvent)
         {
             return $"{ResolvePlayerName(roomEvent)} left the current room.";
         }
 
-        public static string FromRoomEvent(PacketRoomEvent roomEvent)
+        public static string FromRoomEvent(RoomEventInfo roomEvent)
         {
             var roomName = NormalizeRoomName(roomEvent.RoomName);
             switch (roomEvent.Kind)
@@ -43,7 +43,7 @@ namespace TopSpeed.Core.Multiplayer.Chat
             }
         }
 
-        private static string ResolvePlayerName(PacketRoomEvent roomEvent)
+        private static string ResolvePlayerName(RoomEventInfo roomEvent)
         {
             if (!string.IsNullOrWhiteSpace(roomEvent.SubjectPlayerName))
                 return roomEvent.SubjectPlayerName.Trim();

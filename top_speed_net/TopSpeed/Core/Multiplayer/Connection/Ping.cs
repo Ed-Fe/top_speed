@@ -13,30 +13,35 @@ namespace TopSpeed.Core.Multiplayer
                 return;
             }
 
-            if (_pingPending)
+            if (_state.Connection.IsPingPending)
             {
                 _speech.Speak("Ping check already in progress.");
                 return;
             }
 
-            _pingPending = true;
-            _pingStartedAtMs = DateTime.UtcNow.Ticks;
+            _state.Connection.IsPingPending = true;
+            _state.Connection.PingStartedAtTicks = DateTime.UtcNow.Ticks;
             PlayNetworkSound("ping_start.ogg");
             if (!TrySend(session.SendPing(), "ping request"))
             {
-                _pingPending = false;
+                _state.Connection.IsPingPending = false;
                 return;
             }
         }
 
         public void HandlePingReply(long receivedUtcTicks = 0)
         {
-            if (!_pingPending)
+            _connectionFlow.HandlePingReply(receivedUtcTicks);
+        }
+
+        internal void HandlePingReplyCore(long receivedUtcTicks = 0)
+        {
+            if (!_state.Connection.IsPingPending)
                 return;
 
-            _pingPending = false;
+            _state.Connection.IsPingPending = false;
             var endTicks = receivedUtcTicks > 0 ? receivedUtcTicks : DateTime.UtcNow.Ticks;
-            var elapsed = TimeSpan.FromTicks(endTicks - _pingStartedAtMs).TotalMilliseconds;
+            var elapsed = TimeSpan.FromTicks(endTicks - _state.Connection.PingStartedAtTicks).TotalMilliseconds;
             if (elapsed < 0)
                 elapsed = 0;
             PlayNetworkSound("ping_stop.ogg");
@@ -44,3 +49,5 @@ namespace TopSpeed.Core.Multiplayer
         }
     }
 }
+
+

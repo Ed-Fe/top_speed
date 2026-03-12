@@ -11,13 +11,13 @@ namespace TopSpeed.Core.Multiplayer
     {
         private void OpenRoomOptionsMenu()
         {
-            if (!_roomState.InRoom)
+            if (!_state.Rooms.CurrentRoom.InRoom)
             {
                 _speech.Speak("You are not currently inside a game room.");
                 return;
             }
 
-            if (!_roomState.IsHost)
+            if (!_state.Rooms.CurrentRoom.IsHost)
             {
                 _speech.Speak("Only the host can change game options.");
                 return;
@@ -25,26 +25,26 @@ namespace TopSpeed.Core.Multiplayer
 
             BeginRoomOptionsDraft();
             RebuildRoomOptionsMenu();
-            _menu.Push(MultiplayerRoomOptionsMenuId);
+            _menu.Push(MultiplayerMenuKeys.RoomOptions);
         }
 
         private void BeginRoomOptionsDraft()
         {
-            _roomOptionsDraftActive = true;
-            _roomOptionsTrackRandom = false;
-            _roomOptionsTrackName = string.IsNullOrWhiteSpace(_roomState.TrackName)
+            _state.Rooms.RoomOptionsDraftActive = true;
+            _state.Rooms.RoomOptionsTrackRandom = false;
+            _state.Rooms.RoomOptionsTrackName = string.IsNullOrWhiteSpace(_state.Rooms.CurrentRoom.TrackName)
                 ? TrackList.RaceTracks[0].Key
-                : _roomState.TrackName;
-            _roomOptionsLaps = _roomState.Laps > 0 ? _roomState.Laps : (byte)1;
-            _roomOptionsPlayersToStart = _roomState.PlayersToStart >= 2 ? _roomState.PlayersToStart : (byte)2;
-            if (_roomState.RoomType == GameRoomType.OneOnOne)
-                _roomOptionsPlayersToStart = 2;
+                : _state.Rooms.CurrentRoom.TrackName;
+            _state.Rooms.RoomOptionsLaps = _state.Rooms.CurrentRoom.Laps > 0 ? _state.Rooms.CurrentRoom.Laps : (byte)1;
+            _state.Rooms.RoomOptionsPlayersToStart = _state.Rooms.CurrentRoom.PlayersToStart >= 2 ? _state.Rooms.CurrentRoom.PlayersToStart : (byte)2;
+            if (_state.Rooms.CurrentRoom.RoomType == GameRoomType.OneOnOne)
+                _state.Rooms.RoomOptionsPlayersToStart = 2;
         }
 
         private void CancelRoomOptionsChanges()
         {
-            _roomOptionsDraftActive = false;
-            _roomOptionsTrackRandom = false;
+            _state.Rooms.RoomOptionsDraftActive = false;
+            _state.Rooms.RoomOptionsTrackRandom = false;
         }
 
         private void ConfirmRoomOptionsChanges()
@@ -56,32 +56,32 @@ namespace TopSpeed.Core.Multiplayer
                 return;
             }
 
-            if (!_roomState.InRoom || !_roomState.IsHost || !_roomOptionsDraftActive)
+            if (!_state.Rooms.CurrentRoom.InRoom || !_state.Rooms.CurrentRoom.IsHost || !_state.Rooms.RoomOptionsDraftActive)
             {
                 _speech.Speak("Only the host can change game options.");
                 return;
             }
 
             var appliedAny = false;
-            var currentTrack = string.IsNullOrWhiteSpace(_roomState.TrackName) ? TrackList.RaceTracks[0].Key : _roomState.TrackName;
-            if (!string.Equals(currentTrack, _roomOptionsTrackName, StringComparison.OrdinalIgnoreCase))
+            var currentTrack = string.IsNullOrWhiteSpace(_state.Rooms.CurrentRoom.TrackName) ? TrackList.RaceTracks[0].Key : _state.Rooms.CurrentRoom.TrackName;
+            if (!string.Equals(currentTrack, _state.Rooms.RoomOptionsTrackName, StringComparison.OrdinalIgnoreCase))
             {
-                if (!TrySend(session.SendRoomSetTrack(_roomOptionsTrackName), "track change request"))
+                if (!TrySend(session.SendRoomSetTrack(_state.Rooms.RoomOptionsTrackName), "track change request"))
                     return;
                 appliedAny = true;
             }
 
-            if (_roomState.Laps != _roomOptionsLaps)
+            if (_state.Rooms.CurrentRoom.Laps != _state.Rooms.RoomOptionsLaps)
             {
-                if (!TrySend(session.SendRoomSetLaps(_roomOptionsLaps), "lap count change request"))
+                if (!TrySend(session.SendRoomSetLaps(_state.Rooms.RoomOptionsLaps), "lap count change request"))
                     return;
                 appliedAny = true;
             }
 
-            if (_roomState.RoomType != GameRoomType.OneOnOne)
+            if (_state.Rooms.CurrentRoom.RoomType != GameRoomType.OneOnOne)
             {
-                var playersToStart = _roomOptionsPlayersToStart < 2 ? (byte)2 : _roomOptionsPlayersToStart;
-                if (_roomState.PlayersToStart != playersToStart)
+                var playersToStart = _state.Rooms.RoomOptionsPlayersToStart < 2 ? (byte)2 : _state.Rooms.RoomOptionsPlayersToStart;
+                if (_state.Rooms.CurrentRoom.PlayersToStart != playersToStart)
                 {
                     if (!TrySend(session.SendRoomSetPlayersToStart(playersToStart), "player count change request"))
                         return;
@@ -90,91 +90,91 @@ namespace TopSpeed.Core.Multiplayer
             }
 
             CancelRoomOptionsChanges();
-            _menu.ShowRoot(MultiplayerRoomControlsMenuId);
+            _menu.ShowRoot(MultiplayerMenuKeys.RoomControls);
             _speech.Speak(appliedAny ? "Room options updated." : "No option changes to apply.");
         }
 
         private string GetRoomOptionsTrackText()
         {
-            if (!_roomOptionsDraftActive)
+            if (!_state.Rooms.RoomOptionsDraftActive)
                 BeginRoomOptionsDraft();
 
-            if (_roomOptionsTrackRandom)
+            if (_state.Rooms.RoomOptionsTrackRandom)
                 return "Track, currently random chosen.";
 
-            var trackName = TryGetTrackDisplay(_roomOptionsTrackName, out var display)
+            var trackName = TryGetTrackDisplay(_state.Rooms.RoomOptionsTrackName, out var display)
                 ? display
-                : _roomOptionsTrackName;
+                : _state.Rooms.RoomOptionsTrackName;
             return $"Track, currently {trackName}.";
         }
 
         private int GetRoomOptionsLapsIndex()
         {
-            if (!_roomOptionsDraftActive)
+            if (!_state.Rooms.RoomOptionsDraftActive)
                 BeginRoomOptionsDraft();
 
-            var laps = _roomOptionsLaps < 1 ? (byte)1 : _roomOptionsLaps;
+            var laps = _state.Rooms.RoomOptionsLaps < 1 ? (byte)1 : _state.Rooms.RoomOptionsLaps;
             return Math.Max(0, Math.Min(LapCountOptions.Length - 1, laps - 1));
         }
 
         private void SetRoomOptionsLaps(byte laps)
         {
-            if (!_roomOptionsDraftActive)
+            if (!_state.Rooms.RoomOptionsDraftActive)
                 BeginRoomOptionsDraft();
 
             if (laps < 1 || laps > 16)
                 return;
-            _roomOptionsLaps = laps;
+            _state.Rooms.RoomOptionsLaps = laps;
         }
 
         private int GetRoomOptionsPlayersToStartIndex()
         {
-            if (!_roomOptionsDraftActive)
+            if (!_state.Rooms.RoomOptionsDraftActive)
                 BeginRoomOptionsDraft();
 
-            var playersToStart = _roomOptionsPlayersToStart < 2 ? (byte)2 : _roomOptionsPlayersToStart;
+            var playersToStart = _state.Rooms.RoomOptionsPlayersToStart < 2 ? (byte)2 : _state.Rooms.RoomOptionsPlayersToStart;
             return Math.Max(0, Math.Min(RoomCapacityOptions.Length - 1, playersToStart - 2));
         }
 
         private void SetRoomOptionsPlayersToStart(byte playersToStart)
         {
-            if (!_roomOptionsDraftActive)
+            if (!_state.Rooms.RoomOptionsDraftActive)
                 BeginRoomOptionsDraft();
 
-            if (_roomState.RoomType == GameRoomType.OneOnOne)
+            if (_state.Rooms.CurrentRoom.RoomType == GameRoomType.OneOnOne)
             {
-                _roomOptionsPlayersToStart = 2;
+                _state.Rooms.RoomOptionsPlayersToStart = 2;
                 return;
             }
 
             if (playersToStart < 2 || playersToStart > ProtocolConstants.MaxRoomPlayersToStart)
                 return;
 
-            _roomOptionsPlayersToStart = playersToStart;
+            _state.Rooms.RoomOptionsPlayersToStart = playersToStart;
         }
 
         private void OpenRoomTrackTypeMenu()
         {
-            if (!_roomOptionsDraftActive)
+            if (!_state.Rooms.RoomOptionsDraftActive)
                 BeginRoomOptionsDraft();
 
             RebuildRoomTrackTypeMenu();
-            RebuildRoomTrackMenu(MultiplayerRoomTrackRaceMenuId, TrackCategory.RaceTrack);
-            RebuildRoomTrackMenu(MultiplayerRoomTrackAdventureMenuId, TrackCategory.StreetAdventure);
-            _menu.Push(MultiplayerRoomTrackTypeMenuId);
+            RebuildRoomTrackMenu(MultiplayerMenuKeys.RoomTrackRace, TrackCategory.RaceTrack);
+            RebuildRoomTrackMenu(MultiplayerMenuKeys.RoomTrackAdventure, TrackCategory.StreetAdventure);
+            _menu.Push(MultiplayerMenuKeys.RoomTrackType);
         }
 
         private void RebuildRoomTrackTypeMenu()
         {
             var items = new List<MenuItem>
             {
-                new MenuItem("Race track", MenuAction.None, nextMenuId: MultiplayerRoomTrackRaceMenuId),
-                new MenuItem("Street adventure", MenuAction.None, nextMenuId: MultiplayerRoomTrackAdventureMenuId),
+                new MenuItem("Race track", MenuAction.None, nextMenuId: MultiplayerMenuKeys.RoomTrackRace),
+                new MenuItem("Street adventure", MenuAction.None, nextMenuId: MultiplayerMenuKeys.RoomTrackAdventure),
                 new MenuItem("Random", MenuAction.None, onActivate: SelectRandomRoomTrackAny),
                 new MenuItem("Go back", MenuAction.Back)
             };
 
-            _menu.UpdateItems(MultiplayerRoomTrackTypeMenuId, items);
+            _menu.UpdateItems(MultiplayerMenuKeys.RoomTrackType, items);
         }
 
         private void RebuildRoomTrackMenu(string menuId, TrackCategory category)
@@ -219,22 +219,22 @@ namespace TopSpeed.Core.Multiplayer
 
         private void SelectRoomTrack(string trackKey, bool randomChosen)
         {
-            _roomOptionsTrackName = string.IsNullOrWhiteSpace(trackKey) ? TrackList.RaceTracks[0].Key : trackKey;
-            _roomOptionsTrackRandom = randomChosen;
+            _state.Rooms.RoomOptionsTrackName = string.IsNullOrWhiteSpace(trackKey) ? TrackList.RaceTracks[0].Key : trackKey;
+            _state.Rooms.RoomOptionsTrackRandom = randomChosen;
             ReturnToRoomOptionsMenu();
             _speech.Speak(GetRoomOptionsTrackText());
         }
 
         private void ReturnToRoomOptionsMenu()
         {
-            if (string.Equals(_menu.CurrentId, MultiplayerRoomOptionsMenuId, StringComparison.Ordinal))
+            if (string.Equals(_menu.CurrentId, MultiplayerMenuKeys.RoomOptions, StringComparison.Ordinal))
                 return;
 
-            while (_menu.CanPop && !string.Equals(_menu.CurrentId, MultiplayerRoomOptionsMenuId, StringComparison.Ordinal))
+            while (_menu.CanPop && !string.Equals(_menu.CurrentId, MultiplayerMenuKeys.RoomOptions, StringComparison.Ordinal))
                 _menu.PopToPrevious(announceTitle: false);
 
-            if (!string.Equals(_menu.CurrentId, MultiplayerRoomOptionsMenuId, StringComparison.Ordinal))
-                _menu.Push(MultiplayerRoomOptionsMenuId);
+            if (!string.Equals(_menu.CurrentId, MultiplayerMenuKeys.RoomOptions, StringComparison.Ordinal))
+                _menu.Push(MultiplayerMenuKeys.RoomOptions);
         }
 
         private static bool TryGetTrackDisplay(string trackKey, out string display)
@@ -256,3 +256,6 @@ namespace TopSpeed.Core.Multiplayer
         }
     }
 }
+
+
+

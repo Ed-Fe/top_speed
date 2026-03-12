@@ -5,7 +5,7 @@ namespace TopSpeed.Menu
 {
     internal sealed partial class MenuManager
     {
-        public MenuAction Update(InputManager input)
+        public MenuAction Update(IGameInput input)
         {
             if (_stack.Count == 0)
                 return MenuAction.None;
@@ -41,7 +41,7 @@ namespace TopSpeed.Menu
             return item.Action;
         }
 
-        private bool TryHandleGlobalShortcuts(InputManager input)
+        private bool TryHandleGlobalShortcuts(IGameInput input)
         {
             if (_globalShortcuts.Count == 0)
                 return false;
@@ -87,3 +87,4 @@ namespace TopSpeed.Menu
         }
     }
 }
+

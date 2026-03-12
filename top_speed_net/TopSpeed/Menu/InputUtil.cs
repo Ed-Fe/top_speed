@@ -9,7 +9,7 @@ namespace TopSpeed.Menu
     {
         private const int JoystickThreshold = 50;
 
-        public static bool TryGetPressedLetter(InputManager input, out char letter)
+        public static bool TryGetPressedLetter(IGameInput input, out char letter)
         {
             letter = '\0';
             for (var c = 'A'; c <= 'Z'; c++)
@@ -114,3 +114,4 @@ namespace TopSpeed.Menu
         }
     }
 }
+

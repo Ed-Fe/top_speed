@@ -32,7 +32,7 @@ namespace TopSpeed.Core.Multiplayer
                 return;
             }
 
-            if (!_roomState.InRoom)
+            if (!_state.Rooms.CurrentRoom.InRoom)
             {
                 _speech.Speak("You are not in a game room.");
                 return;
@@ -81,7 +81,7 @@ namespace TopSpeed.Core.Multiplayer
                 return;
             }
 
-            if (!_roomState.InRoom)
+            if (!_state.Rooms.CurrentRoom.InRoom)
             {
                 _speech.Speak("You are not in a game room.");
                 return;
@@ -100,12 +100,24 @@ namespace TopSpeed.Core.Multiplayer
 
         internal void OpenGlobalChatHotkey()
         {
+            _chatFlow.OpenGlobalChatHotkey();
+        }
+
+        internal void OpenGlobalChatHotkeyCore()
+        {
             OpenGlobalChatInput();
         }
 
         internal void OpenRoomChatHotkey()
         {
+            _chatFlow.OpenRoomChatHotkey();
+        }
+
+        internal void OpenRoomChatHotkeyCore()
+        {
             OpenRoomChatInput();
         }
     }
 }
+
+

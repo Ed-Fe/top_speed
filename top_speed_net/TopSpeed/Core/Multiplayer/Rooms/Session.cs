@@ -6,7 +6,7 @@ namespace TopSpeed.Core.Multiplayer
     {
         private void Disconnect()
         {
-            _pingPending = false;
+            _state.Connection.IsPingPending = false;
             _clearSession();
             _speech.Speak("Disconnected from server.");
             _menu.ShowRoot("main");
@@ -35,3 +35,4 @@ namespace TopSpeed.Core.Multiplayer
         }
     }
 }
+

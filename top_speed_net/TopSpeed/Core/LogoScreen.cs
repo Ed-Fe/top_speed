@@ -31,7 +31,7 @@ namespace TopSpeed.Core
             }
         }
 
-        public bool Update(InputManager input, float deltaSeconds)
+        public bool Update(IGameInput input, float deltaSeconds)
         {
             if (_logo == null)
                 return true;
@@ -71,3 +71,4 @@ namespace TopSpeed.Core
         }
     }
 }
+

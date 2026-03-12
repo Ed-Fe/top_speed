@@ -75,11 +75,7 @@ namespace TopSpeed.Game
 
             _multiplayerRace?.FinalizeMultiplayerMode();
             _multiplayerRace?.Dispose();
-            _multiplayerRace = new MultiplayerMode(
-                _audio,
-                _speech,
-                _settings,
-                _raceInput,
+            _multiplayerRace = _raceModeFactory.CreateMultiplayer(
                 _pendingMultiplayerTrack!,
                 trackName,
                 automatic,

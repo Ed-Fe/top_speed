@@ -11,7 +11,7 @@ namespace TopSpeed.Core.Multiplayer
             if (index < 0 || index >= SavedServers.Count)
                 return;
 
-            _pendingDeleteServerIndex = index;
+            _state.SavedServers.PendingDeleteIndex = index;
             _questions.Show(new Question(
                 "Delete this server?",
                 "This will remove the saved server entry from the list. Are you sure you would like to continue?",
@@ -37,15 +37,15 @@ namespace TopSpeed.Core.Multiplayer
         private void ConfirmDeleteSavedServer()
         {
             var servers = _settings.SavedServers ?? (_settings.SavedServers = new List<SavedServerEntry>());
-            if (_pendingDeleteServerIndex < 0 || _pendingDeleteServerIndex >= servers.Count)
+            if (_state.SavedServers.PendingDeleteIndex < 0 || _state.SavedServers.PendingDeleteIndex >= servers.Count)
             {
                 if (_questions.IsQuestionMenu(_menu.CurrentId))
                     _menu.PopToPrevious();
                 return;
             }
 
-            servers.RemoveAt(_pendingDeleteServerIndex);
-            _pendingDeleteServerIndex = -1;
+            servers.RemoveAt(_state.SavedServers.PendingDeleteIndex);
+            _state.SavedServers.PendingDeleteIndex = -1;
             _saveSettings();
             RebuildSavedServersMenu();
             if (_questions.IsQuestionMenu(_menu.CurrentId))
@@ -54,3 +54,4 @@ namespace TopSpeed.Core.Multiplayer
         }
     }
 }
+

@@ -11,18 +11,21 @@ namespace TopSpeed.Core.Multiplayer
     {
         public void StartServerDiscovery()
         {
-            if (_discoveryTask != null && !_discoveryTask.IsCompleted)
+            _connectionFlow.StartServerDiscovery();
+        }
+
+        internal void StartServerDiscoveryCore()
+        {
+            if (_state.Connection.DiscoveryTask != null && !_state.Connection.DiscoveryTask.IsCompleted)
                 return;
 
             _speech.Speak("Please wait. Scanning for servers on the local network.");
-            _discoveryCts?.Cancel();
-            _discoveryCts?.Dispose();
-            _discoveryCts = new CancellationTokenSource();
-            _discoveryTask = Task.Run(async () =>
+            var discoveryCts = _lifetime.BeginDiscoveryOperation();
+            _lifetime.SetDiscoveryTask(Task.Run(async () =>
             {
                 using var client = new DiscoveryClient();
-                return await client.ScanAsync(ClientProtocol.DefaultDiscoveryPort, TimeSpan.FromSeconds(2), _discoveryCts.Token);
-            }, _discoveryCts.Token);
+                return await client.ScanAsync(ClientProtocol.DefaultDiscoveryPort, TimeSpan.FromSeconds(2), discoveryCts.Token);
+            }, discoveryCts.Token));
         }
 
         private void HandleDiscoveryResult(IReadOnlyList<ServerInfo> servers)
@@ -42,15 +45,17 @@ namespace TopSpeed.Core.Multiplayer
             }
 
             items.Add(new MenuItem("Go back", MenuAction.Back));
-            _menu.UpdateItems("multiplayer_servers", items);
-            _menu.Push("multiplayer_servers");
+            _menu.UpdateItems(MultiplayerMenuKeys.DiscoveredServers, items);
+            _menu.Push(MultiplayerMenuKeys.DiscoveredServers);
         }
 
         private void SelectDiscoveredServer(ServerInfo server)
         {
-            _pendingServerAddress = server.Address.ToString();
-            _pendingServerPort = server.Port;
+            _state.Connection.PendingServerAddress = server.Address.ToString();
+            _state.Connection.PendingServerPort = server.Port;
             BeginCallSignInput();
         }
     }
 }
+
+

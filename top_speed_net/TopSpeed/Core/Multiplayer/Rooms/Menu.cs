@@ -19,49 +19,49 @@ namespace TopSpeed.Core.Multiplayer
                 new MenuItem("Disconnect from server", MenuAction.None, flags: MenuItemFlags.Close)
             };
 
-            _menu.UpdateItems(MultiplayerLobbyMenuId, items);
+            _menu.UpdateItems(MultiplayerMenuKeys.Lobby, items);
         }
 
         private void RebuildRoomControlsMenu()
         {
             var items = new List<MenuItem>();
-            if (!_roomState.InRoom)
+            if (!_state.Rooms.CurrentRoom.InRoom)
             {
                 items.Add(new MenuItem("You are not currently inside a game room.", MenuAction.None));
-                items.Add(new MenuItem("Return to multiplayer lobby", MenuAction.None, onActivate: () => _menu.ShowRoot(MultiplayerLobbyMenuId)));
-                _menu.UpdateItems(MultiplayerRoomControlsMenuId, items);
+                items.Add(new MenuItem("Return to multiplayer lobby", MenuAction.None, onActivate: () => _menu.ShowRoot(MultiplayerMenuKeys.Lobby)));
+                _menu.UpdateItems(MultiplayerMenuKeys.RoomControls, items);
                 return;
             }
 
-            if (_roomState.IsHost)
+            if (_state.Rooms.CurrentRoom.IsHost)
                 items.Add(new MenuItem("Start this game now", MenuAction.None, onActivate: StartGame));
-            if (_roomState.IsHost)
+            if (_state.Rooms.CurrentRoom.IsHost)
                 items.Add(new MenuItem("Change game options", MenuAction.None, onActivate: OpenRoomOptionsMenu));
-            if (_roomState.IsHost && _roomState.RoomType == GameRoomType.BotsRace)
+            if (_state.Rooms.CurrentRoom.IsHost && _state.Rooms.CurrentRoom.RoomType == GameRoomType.BotsRace)
                 items.Add(new MenuItem("Add a bot to this game room", MenuAction.None, onActivate: AddBotToRoom));
-            if (_roomState.IsHost && _roomState.RoomType == GameRoomType.BotsRace)
+            if (_state.Rooms.CurrentRoom.IsHost && _state.Rooms.CurrentRoom.RoomType == GameRoomType.BotsRace)
                 items.Add(new MenuItem("Remove the last bot that was added", MenuAction.None, onActivate: RemoveLastBotFromRoom));
             items.Add(new MenuItem("Who is currently present in this game room", MenuAction.None, onActivate: OpenRoomPlayersMenu));
             items.Add(new MenuItem("Leave this game room", MenuAction.None, flags: MenuItemFlags.Close));
-            _menu.UpdateItems(MultiplayerRoomControlsMenuId, items);
+            _menu.UpdateItems(MultiplayerMenuKeys.RoomControls, items);
         }
 
         private void RebuildRoomOptionsMenu()
         {
             var items = new List<MenuItem>();
-            if (!_roomState.InRoom)
+            if (!_state.Rooms.CurrentRoom.InRoom)
             {
                 items.Add(new MenuItem("You are not currently inside a game room.", MenuAction.None));
                 items.Add(new MenuItem("Return to room controls", MenuAction.Back));
-                _menu.UpdateItems(MultiplayerRoomOptionsMenuId, items);
+                _menu.UpdateItems(MultiplayerMenuKeys.RoomOptions, items);
                 return;
             }
 
-            if (!_roomState.IsHost)
+            if (!_state.Rooms.CurrentRoom.IsHost)
             {
                 items.Add(new MenuItem("Only the host can change game options.", MenuAction.None));
                 items.Add(new MenuItem("Return to room controls", MenuAction.Back));
-                _menu.UpdateItems(MultiplayerRoomOptionsMenuId, items);
+                _menu.UpdateItems(MultiplayerMenuKeys.RoomOptions, items);
                 return;
             }
 
@@ -85,14 +85,14 @@ namespace TopSpeed.Core.Multiplayer
                 value => SetRoomOptionsPlayersToStart((byte)(value + 2)),
                 hint: "Select the player capacity for this room. The host can start with fewer players. Use LEFT or RIGHT to change.")
             {
-                Hidden = _roomState.RoomType == GameRoomType.OneOnOne
+                Hidden = _state.Rooms.CurrentRoom.RoomType == GameRoomType.OneOnOne
             };
             items.Add(maxPlayersItem);
 
             items.Add(new MenuItem("Confirm game options", MenuAction.None, onActivate: ConfirmRoomOptionsChanges));
             items.Add(new MenuItem("Cancel and discard changes", MenuAction.Back, onActivate: CancelRoomOptionsChanges));
-            var preserveSelection = string.Equals(_menu.CurrentId, MultiplayerRoomOptionsMenuId, StringComparison.Ordinal);
-            _menu.UpdateItems(MultiplayerRoomOptionsMenuId, items, preserveSelection);
+            var preserveSelection = string.Equals(_menu.CurrentId, MultiplayerMenuKeys.RoomOptions, StringComparison.Ordinal);
+            _menu.UpdateItems(MultiplayerMenuKeys.RoomOptions, items, preserveSelection);
         }
 
         private void RebuildLoadoutVehicleMenu()
@@ -102,11 +102,11 @@ namespace TopSpeed.Core.Multiplayer
             {
                 var vehicleIndex = i;
                 var vehicleName = VehicleCatalog.Vehicles[i].Name;
-                items.Add(new MenuItem(vehicleName, MenuAction.None, nextMenuId: MultiplayerLoadoutTransmissionMenuId, onActivate: () => _pendingLoadoutVehicleIndex = vehicleIndex));
+                items.Add(new MenuItem(vehicleName, MenuAction.None, nextMenuId: MultiplayerMenuKeys.LoadoutTransmission, onActivate: () => _state.Rooms.PendingLoadoutVehicleIndex = vehicleIndex));
             }
 
-            items.Add(new MenuItem("Random vehicle", MenuAction.None, nextMenuId: MultiplayerLoadoutTransmissionMenuId, onActivate: () => _pendingLoadoutVehicleIndex = Algorithm.RandomInt(VehicleCatalog.VehicleCount)));
-            _menu.UpdateItems(MultiplayerLoadoutVehicleMenuId, items);
+            items.Add(new MenuItem("Random vehicle", MenuAction.None, nextMenuId: MultiplayerMenuKeys.LoadoutTransmission, onActivate: () => _state.Rooms.PendingLoadoutVehicleIndex = Algorithm.RandomInt(VehicleCatalog.VehicleCount)));
+            _menu.UpdateItems(MultiplayerMenuKeys.LoadoutVehicle, items);
         }
 
         private void RebuildLoadoutTransmissionMenu()
@@ -118,21 +118,21 @@ namespace TopSpeed.Core.Multiplayer
                 new MenuItem("Random transmission mode", MenuAction.None, onActivate: () => SubmitLoadoutReady(Algorithm.RandomInt(2) == 0)),
                 new MenuItem("Go back to vehicle selection", MenuAction.Back)
             };
-            _menu.UpdateItems(MultiplayerLoadoutTransmissionMenuId, items);
+            _menu.UpdateItems(MultiplayerMenuKeys.LoadoutTransmission, items);
         }
 
         private void RebuildRoomPlayersMenu()
         {
             var items = new List<MenuItem>();
-            if (!_roomState.InRoom)
+            if (!_state.Rooms.CurrentRoom.InRoom)
             {
                 items.Add(new MenuItem("You are not currently inside a game room.", MenuAction.None));
                 items.Add(new MenuItem("Go back", MenuAction.Back));
-                _menu.UpdateItems(MultiplayerRoomPlayersMenuId, items);
+                _menu.UpdateItems(MultiplayerMenuKeys.RoomPlayers, items);
                 return;
             }
 
-            var players = _roomState.Players ?? Array.Empty<PacketRoomPlayer>();
+            var players = _state.Rooms.CurrentRoom.Players ?? Array.Empty<RoomParticipant>();
             if (players.Length == 0)
             {
                 items.Add(new MenuItem("No players are currently in this game room.", MenuAction.None));
@@ -142,20 +142,22 @@ namespace TopSpeed.Core.Multiplayer
                 foreach (var player in players)
                 {
                     var name = string.IsNullOrWhiteSpace(player.Name) ? $"Player {player.PlayerNumber + 1}" : player.Name;
-                    var label = player.PlayerId == _roomState.HostPlayerId ? $"{name}, host" : name;
+                    var label = player.PlayerId == _state.Rooms.CurrentRoom.HostPlayerId ? $"{name}, host" : name;
                     items.Add(new MenuItem(label, MenuAction.None));
                 }
             }
 
             items.Add(new MenuItem("Go back", MenuAction.Back));
-            var preserveSelection = string.Equals(_menu.CurrentId, MultiplayerRoomPlayersMenuId, StringComparison.Ordinal);
-            _menu.UpdateItems(MultiplayerRoomPlayersMenuId, items, preserveSelection);
+            var preserveSelection = string.Equals(_menu.CurrentId, MultiplayerMenuKeys.RoomPlayers, StringComparison.Ordinal);
+            _menu.UpdateItems(MultiplayerMenuKeys.RoomPlayers, items, preserveSelection);
         }
 
         private void OpenRoomPlayersMenu()
         {
             RebuildRoomPlayersMenu();
-            _menu.Push(MultiplayerRoomPlayersMenuId);
+            _menu.Push(MultiplayerMenuKeys.RoomPlayers);
         }
     }
 }
+
+

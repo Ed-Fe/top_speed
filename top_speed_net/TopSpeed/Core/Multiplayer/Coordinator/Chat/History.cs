@@ -10,7 +10,7 @@ namespace TopSpeed.Core.Multiplayer
             if (text == null)
                 return;
 
-            _historyBuffers.AddGlobalChat(text);
+            _state.Chat.History.AddGlobalChat(text);
             UpdateHistoryScreens();
         }
 
@@ -20,7 +20,7 @@ namespace TopSpeed.Core.Multiplayer
             if (text == null)
                 return;
 
-            _historyBuffers.AddRoomChat(text);
+            _state.Chat.History.AddRoomChat(text);
             UpdateHistoryScreens();
         }
 
@@ -30,7 +30,7 @@ namespace TopSpeed.Core.Multiplayer
             if (text == null)
                 return;
 
-            _historyBuffers.AddConnection(text);
+            _state.Chat.History.AddConnection(text);
             UpdateHistoryScreens();
         }
 
@@ -40,24 +40,36 @@ namespace TopSpeed.Core.Multiplayer
             if (text == null)
                 return;
 
-            _historyBuffers.AddRoomEvent(text);
+            _state.Chat.History.AddRoomEvent(text);
             UpdateHistoryScreens();
         }
 
         internal void NextChatCategory()
         {
-            _historyBuffers.MoveToNext();
+            _chatFlow.NextCategory();
+        }
+
+        internal void NextChatCategoryCore()
+        {
+            _state.Chat.History.MoveToNext();
             PlayNetworkSound("buffer_switch.ogg");
             UpdateHistoryScreens();
-            _speech.Speak(_historyBuffers.CategoryLabel(), SpeechService.SpeakFlag.None);
+            _speech.Speak(_state.Chat.History.CategoryLabel(), SpeechService.SpeakFlag.None);
         }
 
         internal void PreviousChatCategory()
         {
-            _historyBuffers.MoveToPrevious();
+            _chatFlow.PreviousCategory();
+        }
+
+        internal void PreviousChatCategoryCore()
+        {
+            _state.Chat.History.MoveToPrevious();
             PlayNetworkSound("buffer_switch.ogg");
             UpdateHistoryScreens();
-            _speech.Speak(_historyBuffers.CategoryLabel(), SpeechService.SpeakFlag.None);
+            _speech.Speak(_state.Chat.History.CategoryLabel(), SpeechService.SpeakFlag.None);
         }
     }
 }
+
+

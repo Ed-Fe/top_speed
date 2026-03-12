@@ -9,7 +9,7 @@ namespace TopSpeed.Core.Multiplayer
         {
             _promptTextInput(
                 "Enter the server name.",
-                _savedServerDraft.Name,
+                _state.SavedServers.Draft.Name,
                 SpeechService.SpeakFlag.None,
                 true,
                 result =>
@@ -17,7 +17,7 @@ namespace TopSpeed.Core.Multiplayer
                     if (result.Cancelled)
                         return;
 
-                    _savedServerDraft.Name = (result.Text ?? string.Empty).Trim();
+                    _state.SavedServers.Draft.Name = (result.Text ?? string.Empty).Trim();
                     RebuildSavedServerFormMenu();
                 });
         }
@@ -26,7 +26,7 @@ namespace TopSpeed.Core.Multiplayer
         {
             _promptTextInput(
                 "Enter the server IP address or host name.",
-                _savedServerDraft.Host,
+                _state.SavedServers.Draft.Host,
                 SpeechService.SpeakFlag.None,
                 true,
                 result =>
@@ -34,14 +34,14 @@ namespace TopSpeed.Core.Multiplayer
                     if (result.Cancelled)
                         return;
 
-                    _savedServerDraft.Host = (result.Text ?? string.Empty).Trim();
+                    _state.SavedServers.Draft.Host = (result.Text ?? string.Empty).Trim();
                     RebuildSavedServerFormMenu();
                 });
         }
 
         private void UpdateSavedServerDraftPort()
         {
-            var current = _savedServerDraft.Port > 0 ? _savedServerDraft.Port.ToString() : string.Empty;
+            var current = _state.SavedServers.Draft.Port > 0 ? _state.SavedServers.Draft.Port.ToString() : string.Empty;
             _promptTextInput(
                 "Enter the server port, or leave empty for default.",
                 current,
@@ -55,7 +55,7 @@ namespace TopSpeed.Core.Multiplayer
                     var trimmed = (result.Text ?? string.Empty).Trim();
                     if (string.IsNullOrWhiteSpace(trimmed))
                     {
-                        _savedServerDraft.Port = 0;
+                        _state.SavedServers.Draft.Port = 0;
                         RebuildSavedServerFormMenu();
                         return;
                     }
@@ -66,9 +66,10 @@ namespace TopSpeed.Core.Multiplayer
                         return;
                     }
 
-                    _savedServerDraft.Port = port;
+                    _state.SavedServers.Draft.Port = port;
                     RebuildSavedServerFormMenu();
                 });
         }
     }
 }
+

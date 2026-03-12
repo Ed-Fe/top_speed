@@ -32,8 +32,8 @@ namespace TopSpeed.Core.Multiplayer
 
             _settings.LastServerAddress = host;
             _saveSettings();
-            _pendingServerAddress = host;
-            _pendingServerPort = overridePort ?? ResolveServerPort();
+            _state.Connection.PendingServerAddress = host;
+            _state.Connection.PendingServerPort = overridePort ?? ResolveServerPort();
             BeginCallSignInput();
             return true;
         }
@@ -52,8 +52,8 @@ namespace TopSpeed.Core.Multiplayer
                 return false;
             }
 
-            _pendingCallSign = trimmed;
-            AttemptConnect(_pendingServerAddress, _pendingServerPort, _pendingCallSign);
+            _state.Connection.PendingCallSign = trimmed;
+            AttemptConnect(_state.Connection.PendingServerAddress, _state.Connection.PendingServerPort, _state.Connection.PendingCallSign);
             return true;
         }
 
@@ -62,12 +62,10 @@ namespace TopSpeed.Core.Multiplayer
             _speech.Speak("Attempting to connect, please wait...");
             ClearPendingCompatibilityResult(disposeSession: true);
             _clearSession();
-            _pingPending = false;
+            _lifetime.ResetPing();
             StartConnectingPulse();
-            _connectCts?.Cancel();
-            _connectCts?.Dispose();
-            _connectCts = new CancellationTokenSource();
-            _connectTask = _connector.ConnectAsync(host, port, callSign, TimeSpan.FromSeconds(5), _connectCts.Token);
+            var connectCts = _lifetime.BeginConnectOperation();
+            _lifetime.SetConnectTask(_connector.ConnectAsync(host, port, callSign, TimeSpan.FromSeconds(5), connectCts.Token));
         }
 
         private void HandleConnectResult(ConnectResult result)
@@ -77,8 +75,8 @@ namespace TopSpeed.Core.Multiplayer
             {
                 if (result.RequiresCompatibilityConfirmation && result.CompatibilityNotice.HasValue)
                 {
-                    _pendingCompatibilityResult = result;
-                    _hasPendingCompatibilityResult = true;
+                    _state.Connection.PendingCompatibilityResult = result;
+                    _state.Connection.HasPendingCompatibilityResult = true;
                     ShowCompatibilityDialog(result.CompatibilityNotice.Value);
                     _enterMenuState();
                     return;
@@ -110,7 +108,7 @@ namespace TopSpeed.Core.Multiplayer
                 welcome += $" Message of the day: {result.Motd}.";
             _speech.Speak(welcome);
             _menu.FadeOutMenuMusic();
-            _menu.ShowRoot(MultiplayerLobbyMenuId);
+            _menu.ShowRoot(MultiplayerMenuKeys.Lobby);
             _enterMenuState();
         }
 
@@ -138,20 +136,20 @@ namespace TopSpeed.Core.Multiplayer
 
         private void HandleCompatibilityDialogResult(int resultId)
         {
-            if (!_hasPendingCompatibilityResult)
+            if (!_state.Connection.HasPendingCompatibilityResult)
                 return;
 
             if (resultId == QuestionId.Confirm)
             {
-                var result = _pendingCompatibilityResult;
-                _hasPendingCompatibilityResult = false;
-                _pendingCompatibilityResult = default;
+                var result = _state.Connection.PendingCompatibilityResult;
+                _state.Connection.HasPendingCompatibilityResult = false;
+                _state.Connection.PendingCompatibilityResult = default;
                 CompleteSuccessfulConnection(result);
                 return;
             }
 
-            if (_pendingCompatibilityResult.Session != null)
-                _pendingCompatibilityResult.Session.Dispose();
+            if (_state.Connection.PendingCompatibilityResult.Session != null)
+                _state.Connection.PendingCompatibilityResult.Session.Dispose();
             ClearPendingCompatibilityResult(disposeSession: false);
             _speech.Speak("Connection canceled.");
             _enterMenuState();
@@ -159,14 +157,14 @@ namespace TopSpeed.Core.Multiplayer
 
         private void ClearPendingCompatibilityResult(bool disposeSession)
         {
-            if (!_hasPendingCompatibilityResult)
+            if (!_state.Connection.HasPendingCompatibilityResult)
                 return;
 
-            if (disposeSession && _pendingCompatibilityResult.Session != null)
-                _pendingCompatibilityResult.Session.Dispose();
+            if (disposeSession && _state.Connection.PendingCompatibilityResult.Session != null)
+                _state.Connection.PendingCompatibilityResult.Session.Dispose();
 
-            _hasPendingCompatibilityResult = false;
-            _pendingCompatibilityResult = default;
+            _state.Connection.HasPendingCompatibilityResult = false;
+            _state.Connection.PendingCompatibilityResult = default;
         }
 
         private void ShowConnectionFailedDialog(string message)
@@ -186,3 +184,5 @@ namespace TopSpeed.Core.Multiplayer
         }
     }
 }
+
+

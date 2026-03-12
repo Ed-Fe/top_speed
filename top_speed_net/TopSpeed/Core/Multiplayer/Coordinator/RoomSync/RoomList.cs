@@ -6,12 +6,12 @@ namespace TopSpeed.Core.Multiplayer
 {
     internal sealed partial class MultiplayerCoordinator
     {
-        private void ApplyRoomListEvent(PacketRoomEvent roomEvent)
+        private void ApplyRoomListEvent(RoomEventInfo roomEvent)
         {
             if (roomEvent.Kind == RoomEventKind.None)
                 return;
 
-            var rooms = new List<PacketRoomSummary>(_roomList.Rooms ?? Array.Empty<PacketRoomSummary>());
+            var rooms = new List<RoomSummaryInfo>(_state.Rooms.RoomList.Rooms ?? Array.Empty<RoomSummaryInfo>());
             var index = rooms.FindIndex(r => r.RoomId == roomEvent.RoomId);
 
             switch (roomEvent.Kind)
@@ -30,7 +30,7 @@ namespace TopSpeed.Core.Multiplayer
                 case RoomEventKind.BotAdded:
                 case RoomEventKind.BotRemoved:
                 case RoomEventKind.PlayersToStartChanged:
-                    var summary = new PacketRoomSummary
+                    var summary = new RoomSummaryInfo
                     {
                         RoomId = roomEvent.RoomId,
                         RoomName = roomEvent.RoomName ?? string.Empty,
@@ -48,7 +48,8 @@ namespace TopSpeed.Core.Multiplayer
             }
 
             rooms.Sort((a, b) => a.RoomId.CompareTo(b.RoomId));
-            _roomList = new PacketRoomList { Rooms = rooms.ToArray() };
+            _state.Rooms.RoomList = new RoomListInfo { Rooms = rooms.ToArray() };
         }
     }
 }
+

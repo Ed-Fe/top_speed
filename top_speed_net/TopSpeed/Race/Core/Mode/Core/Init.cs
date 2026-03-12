@@ -5,12 +5,9 @@ using TopSpeed.Audio;
 using TopSpeed.Data;
 using TopSpeed.Input;
 using TopSpeed.Race.Events;
-using TopSpeed.Race.Panels;
 using TopSpeed.Race.Runtime;
 using TopSpeed.Speech;
 using TopSpeed.Tracks;
-using TopSpeed.Vehicles;
-using TopSpeed.Vehicles.Core;
 using TS.Audio;
 using TopSpeed.Input.Devices.Vibration;
 
@@ -65,75 +62,37 @@ namespace TopSpeed.Race
             _highscore = 0;
             _sayTimeLength = 0.0f;
 
-            _track = trackData == null
-                ? Track.Load(track, audio)
-                : Track.LoadFromData(track, trackData, audio, userDefined);
-            _car = CarFactory.CreateDefault(audio, _track, input, settings, vehicle, vehicleFile, () => _elapsedTotal, () => _started, _vibrationDevice);
-            _localRadio = new VehicleRadioController(audio);
-            _radioPanel = new RadioVehiclePanel(_input, _audio, _settings, _localRadio, NextLocalMediaId, SpeakText, HandleLocalRadioMediaLoaded, HandleLocalRadioPlaybackChanged);
-            _panelManager = new VehiclePanelManager(new IVehicleRacePanel[]
-            {
-                new ControlVehiclePanel(),
-                _radioPanel
-            });
+            var runtimeObjects = CreateRuntimeObjects(track, trackData, userDefined, vehicle, vehicleFile);
+            _track = runtimeObjects.Track;
+            _car = runtimeObjects.Car;
+            _localRadio = runtimeObjects.LocalRadio;
+            _radioPanel = runtimeObjects.RadioPanel;
+            _panelManager = runtimeObjects.PanelManager;
             ApplyActivePanelInputAccess();
             RefreshCategoryVolumes();
 
-            if (!string.IsNullOrWhiteSpace(track) &&
-                track.IndexOf("adv", StringComparison.OrdinalIgnoreCase) >= 0)
-            {
-                _nrOfLaps = 1;
-            }
+            ApplyAdventureLapOverride(track);
 
-            _soundNumbers = new AudioSourceHandle[101];
-            for (var i = 0; i <= 100; i++)
-            {
-                _soundNumbers[i] = LoadLanguageSound($"numbers\\{i}");
-            }
+            _soundNumbers = CreateNumberSounds();
 
-            _soundStart = LoadLanguageSound("race\\start321");
-            _soundBestTime = LoadLanguageSound("race\\time\\trackrecord");
-            _soundNewTime = LoadLanguageSound("race\\time\\newrecord");
-            _soundYourTime = LoadLanguageSound("race\\time\\yourtime");
-            _soundMinute = LoadLanguageSound("race\\time\\minute");
-            _soundMinutes = LoadLanguageSound("race\\time\\minutes");
-            _soundSecond = LoadLanguageSound("race\\time\\second");
-            _soundSeconds = LoadLanguageSound("race\\time\\seconds");
-            _soundPoint = LoadLanguageSound("race\\time\\point");
-            _soundPercent = LoadLanguageSound("race\\time\\percent");
+            var raceUiSounds = CreateRaceUiSounds();
+            _soundStart = raceUiSounds.Start;
+            _soundBestTime = raceUiSounds.BestTime;
+            _soundNewTime = raceUiSounds.NewTime;
+            _soundYourTime = raceUiSounds.YourTime;
+            _soundMinute = raceUiSounds.Minute;
+            _soundMinutes = raceUiSounds.Minutes;
+            _soundSecond = raceUiSounds.Second;
+            _soundSeconds = raceUiSounds.Seconds;
+            _soundPoint = raceUiSounds.Point;
+            _soundPercent = raceUiSounds.Percent;
 
-            _soundUnkey = new AudioSourceHandle[MaxUnkeys];
-            for (var i = 0; i < MaxUnkeys; i++)
-            {
-                var file = $"unkey{i + 1}.wav";
-                _soundUnkey[i] = LoadLegacySound(file);
-            }
+            _soundUnkey = CreateUnkeySounds();
 
-            _randomSounds = new AudioSourceHandle?[RandomSoundGroups][];
-            _totalRandomSounds = new int[RandomSoundGroups];
-            for (var i = 0; i < RandomSoundGroups; i++)
-                _randomSounds[i] = new AudioSourceHandle?[RandomSoundMax];
+            (_randomSounds, _totalRandomSounds) = CreateRandomSoundContainers();
+            LoadDefaultRandomSounds();
 
-            LoadRandomSounds(RandomSound.EasyLeft, "race\\copilot\\easyleft");
-            LoadRandomSounds(RandomSound.Left, "race\\copilot\\left");
-            LoadRandomSounds(RandomSound.HardLeft, "race\\copilot\\hardleft");
-            LoadRandomSounds(RandomSound.HairpinLeft, "race\\copilot\\hairpinleft");
-            LoadRandomSounds(RandomSound.EasyRight, "race\\copilot\\easyright");
-            LoadRandomSounds(RandomSound.Right, "race\\copilot\\right");
-            LoadRandomSounds(RandomSound.HardRight, "race\\copilot\\hardright");
-            LoadRandomSounds(RandomSound.HairpinRight, "race\\copilot\\hairpinright");
-            LoadRandomSounds(RandomSound.Asphalt, "race\\copilot\\asphalt");
-            LoadRandomSounds(RandomSound.Gravel, "race\\copilot\\gravel");
-            LoadRandomSounds(RandomSound.Water, "race\\copilot\\water");
-            LoadRandomSounds(RandomSound.Sand, "race\\copilot\\sand");
-            LoadRandomSounds(RandomSound.Snow, "race\\copilot\\snow");
-            LoadRandomSounds(RandomSound.Finish, "race\\info\\finish");
-
-            _soundLaps = new AudioSourceHandle[MaxLaps - 1];
-            for (var i = 0; i < MaxLaps - 1; i++)
-            {
-                _soundLaps[i] = LoadLanguageSound($"race\\info\\laps2go{i + 1}");
-            }
+            _soundLaps = CreateLapSounds();
 
             _soundTrackName = LoadTrackNameSound(_track.TrackName);
             _soundTurnEndDing = LoadLegacySound("ding.ogg");

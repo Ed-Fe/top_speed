@@ -35,9 +35,9 @@ namespace TopSpeed.Game
         }
 
         private readonly GameWindow _window;
-        private readonly AudioManager _audio;
-        private readonly SpeechService _speech;
-        private readonly InputManager _input;
+        private readonly IGameAudio _audio;
+        private readonly IGameSpeech _speech;
+        private readonly IGameInput _input;
         private readonly MenuManager _menu;
         private readonly DialogManager _dialogs;
         private readonly ChoiceDialogManager _choices;
@@ -45,10 +45,12 @@ namespace TopSpeed.Game
         private readonly IReadOnlyList<SettingsIssue> _settingsIssues;
         private readonly RaceInput _raceInput;
         private readonly RaceSetup _setup;
+        private readonly IRaceModeFactory _raceModeFactory;
+        private readonly StateMachine _stateMachine;
         private readonly SettingsManager _settingsManager;
         private readonly RaceSelection _selection;
         private readonly MenuRegistry _menuRegistry;
-        private readonly MultiplayerCoordinator _multiplayerCoordinator;
+        private readonly IMultiplayerRuntime _multiplayerCoordinator;
         private readonly UpdateConfig _updateConfig;
         private readonly UpdateService _updateService;
         private readonly ClientPktReg _mpPktReg;

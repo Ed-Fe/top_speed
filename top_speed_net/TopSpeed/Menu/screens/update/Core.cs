@@ -4,7 +4,7 @@ namespace TopSpeed.Menu
 {
     internal sealed partial class MenuScreen
     {
-        public MenuUpdateResult Update(InputManager input)
+        public MenuUpdateResult Update(IGameInput input)
         {
             if (_items.Count == 0)
                 return MenuUpdateResult.None;
@@ -60,3 +60,4 @@ namespace TopSpeed.Menu
         }
     }
 }
+

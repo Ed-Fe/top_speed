@@ -32,16 +32,16 @@ namespace TopSpeed.Core.Multiplayer
 
             items.Add(new MenuItem("Add a new server", MenuAction.None, onActivate: OpenAddSavedServerForm));
             items.Add(new MenuItem("Go back", MenuAction.Back));
-            _menu.UpdateItems(MultiplayerSavedServersMenuId, items, preserveSelection: true);
+            _menu.UpdateItems(MultiplayerMenuKeys.SavedServers, items, preserveSelection: true);
         }
 
         private void OpenAddSavedServerForm()
         {
-            _savedServerEditIndex = -1;
-            _savedServerOriginal = null;
-            _savedServerDraft = new SavedServerEntry();
+            _state.SavedServers.EditIndex = -1;
+            _state.SavedServers.Original = null;
+            _state.SavedServers.Draft = new SavedServerEntry();
             RebuildSavedServerFormMenu();
-            _menu.Push(MultiplayerSavedServerFormMenuId);
+            _menu.Push(MultiplayerMenuKeys.SavedServerForm);
         }
 
         private void OpenEditSavedServerForm(int index)
@@ -51,11 +51,11 @@ namespace TopSpeed.Core.Multiplayer
                 return;
 
             var source = servers[index];
-            _savedServerEditIndex = index;
-            _savedServerOriginal = CloneSavedServer(source);
-            _savedServerDraft = CloneSavedServer(source);
+            _state.SavedServers.EditIndex = index;
+            _state.SavedServers.Original = CloneSavedServer(source);
+            _state.SavedServers.Draft = CloneSavedServer(source);
             RebuildSavedServerFormMenu();
-            _menu.Push(MultiplayerSavedServerFormMenuId);
+            _menu.Push(MultiplayerMenuKeys.SavedServerForm);
         }
 
         private void ConnectUsingSavedServer(int index)
@@ -72,9 +72,11 @@ namespace TopSpeed.Core.Multiplayer
                 return;
             }
 
-            _pendingServerAddress = host;
-            _pendingServerPort = ResolveSavedServerPort(server);
+            _state.Connection.PendingServerAddress = host;
+            _state.Connection.PendingServerPort = ResolveSavedServerPort(server);
             BeginCallSignInput();
         }
     }
 }
+
+

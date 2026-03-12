@@ -8,16 +8,16 @@ namespace TopSpeed.Core.Multiplayer
     {
         private void UpdateHistoryScreens()
         {
-            var items = _historyBuffers.GetCurrentItems();
-            TryUpdateChatScreen(MultiplayerLobbyMenuId, items);
-            TryUpdateChatScreen(MultiplayerRoomControlsMenuId, items);
+            var items = _state.Chat.History.GetCurrentItems();
+            TryUpdateChatScreen(MultiplayerMenuKeys.Lobby, items);
+            TryUpdateChatScreen(MultiplayerMenuKeys.RoomControls, items);
         }
 
         private void TryUpdateChatScreen(string menuId, IEnumerable<MenuItem> items)
         {
             try
             {
-                _menu.UpdateItems(menuId, SharedLobbyChatScreenId, items, preserveSelection: true);
+                _menu.UpdateItems(menuId, MultiplayerScreenKeys.SharedLobbyChat, items, preserveSelection: true);
             }
             catch (InvalidOperationException)
             {
@@ -32,3 +32,5 @@ namespace TopSpeed.Core.Multiplayer
         }
     }
 }
+
+

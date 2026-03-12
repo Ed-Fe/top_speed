@@ -8,35 +8,36 @@ namespace TopSpeed.Core.Multiplayer
     {
         public bool UpdatePendingOperations()
         {
-            if (_connectTask != null)
+            return _connectionFlow.UpdatePendingOperations();
+        }
+
+        internal bool UpdatePendingOperationsCore()
+        {
+            if (_state.Connection.ConnectTask != null)
             {
-                if (!_connectTask.IsCompleted)
+                if (!_state.Connection.ConnectTask.IsCompleted)
                     return true;
 
-                var result = _connectTask.IsFaulted || _connectTask.IsCanceled
+                var result = _state.Connection.ConnectTask.IsFaulted || _state.Connection.ConnectTask.IsCanceled
                     ? ConnectResult.CreateFail("Connection attempt failed.")
-                    : _connectTask.GetAwaiter().GetResult();
-                _connectTask = null;
-                _connectCts?.Dispose();
-                _connectCts = null;
+                    : _state.Connection.ConnectTask.GetAwaiter().GetResult();
+                _lifetime.CompleteConnectOperation();
                 HandleConnectResult(result);
                 return false;
             }
 
-            if (_discoveryTask != null)
+            if (_state.Connection.DiscoveryTask != null)
             {
-                if (!_discoveryTask.IsCompleted)
+                if (!_state.Connection.DiscoveryTask.IsCompleted)
                     return true;
 
                 IReadOnlyList<ServerInfo> servers;
-                if (_discoveryTask.IsFaulted || _discoveryTask.IsCanceled)
+                if (_state.Connection.DiscoveryTask.IsFaulted || _state.Connection.DiscoveryTask.IsCanceled)
                     servers = Array.Empty<ServerInfo>();
                 else
-                    servers = _discoveryTask.GetAwaiter().GetResult();
+                    servers = _state.Connection.DiscoveryTask.GetAwaiter().GetResult();
 
-                _discoveryTask = null;
-                _discoveryCts?.Dispose();
-                _discoveryCts = null;
+                _lifetime.CompleteDiscoveryOperation();
                 HandleDiscoveryResult(servers);
                 return false;
             }
@@ -45,3 +46,5 @@ namespace TopSpeed.Core.Multiplayer
         }
     }
 }
+
+

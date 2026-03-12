@@ -22,30 +22,35 @@ namespace TopSpeed.Game
             var settingsLoad = _settingsManager.Load();
             _settings = settingsLoad.Settings;
             _settingsIssues = settingsLoad.Issues;
-            _audio = new AudioManager(_settings.HrtfAudio, _settings.AutoDetectAudioDeviceFormat);
-            _input = new InputManager(_window.Handle);
-            _speech = new SpeechService(_input.IsAnyInputHeld);
-            _speech.ScreenReaderRateMs = _settings.ScreenReaderRateMs;
-            _input.JoystickScanTimedOut += () => _speech.Speak("No joystick detected.");
-            _input.SetDeviceMode(_settings.DeviceMode);
+            var audio = new AudioManager(_settings.HrtfAudio, _settings.AutoDetectAudioDeviceFormat);
+            var input = new InputManager(_window.Handle);
+            var speech = new SpeechService(input.IsAnyInputHeld);
+            _audio = audio;
+            _input = input;
+            _speech = speech;
+            speech.ScreenReaderRateMs = _settings.ScreenReaderRateMs;
+            input.JoystickScanTimedOut += () => speech.Speak("No joystick detected.");
+            input.SetDeviceMode(_settings.DeviceMode);
             _raceInput = new RaceInput(_settings);
             _setup = new RaceSetup();
-            _menu = new MenuManager(_audio, _speech, () => _settings.UsageHints);
+            _raceModeFactory = new RaceModeFactory(audio, speech, _settings, _raceInput);
+            _stateMachine = new StateMachine(this);
+            _menu = new MenuManager(audio, speech, () => _settings.UsageHints);
             _dialogs = new DialogManager(_menu);
-            _choices = new ChoiceDialogManager(_menu, message => _speech.Speak(message));
+            _choices = new ChoiceDialogManager(_menu, message => speech.Speak(message));
             _menu.SetWrapNavigation(_settings.MenuWrapNavigation);
             _menu.SetMenuSoundPreset(_settings.MenuSoundPreset);
             _menu.SetMenuNavigatePanning(_settings.MenuNavigatePanning);
             _selection = new RaceSelection(_setup, _settings);
             _menuRegistry = new MenuRegistry(_menu, _settings, _setup, _raceInput, _selection, this, this, this, this, this, this);
-            _inputMapping = new InputMappingHandler(_input, _raceInput, _settings, _speech, SaveSettings);
+            _inputMapping = new InputMappingHandler(input, _raceInput, _settings, speech, SaveSettings);
             _updateConfig = UpdateConfig.Default;
             _updateService = new UpdateService(_updateConfig);
             _multiplayerCoordinator = new MultiplayerCoordinator(
                 _menu,
                 _dialogs,
-                _audio,
-                _speech,
+                audio,
+                speech,
                 _settings,
                 new MultiplayerConnector(),
                 BeginPromptTextInput,
@@ -69,7 +74,7 @@ namespace TopSpeed.Game
 
         public void Initialize()
         {
-            _logo = new LogoScreen(_audio);
+            _logo = new LogoScreen((AudioManager)_audio);
             _logo.Start();
             _state = AppState.Logo;
         }
