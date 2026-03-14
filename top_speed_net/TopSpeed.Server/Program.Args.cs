@@ -71,6 +71,10 @@ namespace TopSpeed.Server
             ConsoleSink.WriteLine("  --update                Download and apply the latest server update, then exit.");
             ConsoleSink.WriteLine("  --auto-update           Check for updates periodically and apply automatically.");
             ConsoleSink.WriteLine("  --update-interval-minutes <n>  Interval for --auto-update checks (min 5, default 60).");
+            ConsoleSink.WriteLine("  --update-owner <owner>  Override GitHub owner for update checks (default: diamondStar35).");
+            ConsoleSink.WriteLine("  --update-repo <name>    Override GitHub repo for update checks (default: top_speed).");
+            ConsoleSink.WriteLine("  --update-info-ref <ref> Override ref used to read info.json (default: main).");
+            ConsoleSink.WriteLine("  --update-release-tag <tag>  Use a specific release tag instead of latest.");
             ConsoleSink.WriteLine("  -h, --help              Show this help.");
         }
 

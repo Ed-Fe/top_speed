@@ -16,9 +16,9 @@ namespace TopSpeed.Server
             if (HasArgument(args, "--apply-update"))
                 return RunApplyUpdate(args);
             if (HasArgument(args, "--check-update"))
-                return RunCheckUpdate();
+                return RunCheckUpdate(args);
             if (HasArgument(args, "--update"))
-                return RunUpdate();
+                return RunUpdate(args);
             return null;
         }
 
@@ -27,7 +27,7 @@ namespace TopSpeed.Server
 
         private static void StartBackgroundUpdateCheck(string[] args, CancellationTokenSource stopSource)
         {
-            var config = ServerUpdateConfig.Default;
+            var config = BuildUpdateConfig(args);
             var service = new ServerUpdateService(config);
             var current = ServerUpdateConfig.CurrentVersion;
             var rid = ServerUpdateConfig.CurrentRid;
@@ -152,9 +152,9 @@ namespace TopSpeed.Server
             return true;
         }
 
-        private static int RunCheckUpdate()
+        private static int RunCheckUpdate(string[] args)
         {
-            var config = ServerUpdateConfig.Default;
+            var config = BuildUpdateConfig(args);
             var service = new ServerUpdateService(config);
             var current = ServerUpdateConfig.CurrentVersion;
             var rid = ServerUpdateConfig.CurrentRid;
@@ -201,9 +201,9 @@ namespace TopSpeed.Server
             return 10;
         }
 
-        private static int RunUpdate()
+        private static int RunUpdate(string[] args)
         {
-            var config = ServerUpdateConfig.Default;
+            var config = BuildUpdateConfig(args);
             var service = new ServerUpdateService(config);
             var current = ServerUpdateConfig.CurrentVersion;
             var rid = ServerUpdateConfig.CurrentRid;
@@ -391,6 +391,16 @@ namespace TopSpeed.Server
             }
 
             return false;
+        }
+
+        private static ServerUpdateConfig BuildUpdateConfig(string[] args)
+        {
+            var owner = GetArgumentValue(args, "--update-owner");
+            var repo = GetArgumentValue(args, "--update-repo");
+            var infoRef = GetArgumentValue(args, "--update-info-ref");
+            var releaseTag = GetArgumentValue(args, "--update-release-tag");
+
+            return ServerUpdateConfig.FromRepository(owner, repo, infoRef, releaseTag);
         }
 
         /// <summary>

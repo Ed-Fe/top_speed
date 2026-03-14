@@ -6,8 +6,9 @@ namespace TopSpeed.Server.Updates
 {
     internal sealed class ServerUpdateConfig
     {
-        private const string RepoOwner = "diamondStar35";
-        private const string RepoName = "top_speed";
+        private const string DefaultRepoOwner = "diamondStar35";
+        private const string DefaultRepoName = "top_speed";
+        private const string DefaultInfoRef = "main";
 
         public ServerUpdateConfig(
             string infoUrl,
@@ -24,9 +25,31 @@ namespace TopSpeed.Server.Updates
         public string AssetTemplate { get; }
 
         public static ServerUpdateConfig Default { get; } = new ServerUpdateConfig(
-            $"https://raw.githubusercontent.com/{RepoOwner}/{RepoName}/main/info.json",
-            $"https://api.github.com/repos/{RepoOwner}/{RepoName}/releases/latest",
+            $"https://raw.githubusercontent.com/{DefaultRepoOwner}/{DefaultRepoName}/{DefaultInfoRef}/info.json",
+            $"https://api.github.com/repos/{DefaultRepoOwner}/{DefaultRepoName}/releases/latest",
             "TopSpeed.Server-{rid}-Release-v-{version}.zip");
+
+        public static ServerUpdateConfig FromRepository(
+            string? owner,
+            string? repo,
+            string? infoRef,
+            string? releaseTag)
+        {
+            var trimmedOwner = string.IsNullOrWhiteSpace(owner) ? DefaultRepoOwner : owner.Trim();
+            var trimmedRepo = string.IsNullOrWhiteSpace(repo) ? DefaultRepoName : repo.Trim();
+            var trimmedInfoRef = string.IsNullOrWhiteSpace(infoRef) ? DefaultInfoRef : infoRef.Trim();
+            var trimmedReleaseTag = string.IsNullOrWhiteSpace(releaseTag) ? null : releaseTag.Trim();
+
+            var infoUrl = $"https://raw.githubusercontent.com/{trimmedOwner}/{trimmedRepo}/{trimmedInfoRef}/info.json";
+            var releaseApiUrl = string.IsNullOrWhiteSpace(trimmedReleaseTag)
+                ? $"https://api.github.com/repos/{trimmedOwner}/{trimmedRepo}/releases/latest"
+                : $"https://api.github.com/repos/{trimmedOwner}/{trimmedRepo}/releases/tags/{trimmedReleaseTag}";
+
+            return new ServerUpdateConfig(
+                infoUrl,
+                releaseApiUrl,
+                "TopSpeed.Server-{rid}-Release-v-{version}.zip");
+        }
 
         public static ServerVersion CurrentVersion =>
             new ServerVersion(
