@@ -18,6 +18,10 @@ namespace TopSpeed.Server
                 return 0;
             }
 
+            var updateExitCode = TryHandleUpdateCommand(args);
+            if (updateExitCode.HasValue)
+                return updateExitCode.Value;
+
             using var timerResolution = new WindowsTimerResolution(1);
 
             var loggingEnabled = args.Length > 0;
@@ -71,6 +75,7 @@ namespace TopSpeed.Server
             discovery.Start();
             if (!loggingEnabled)
                 ConsoleSink.WriteLine("Server started. Press Ctrl+C to stop.");
+            StartBackgroundUpdateCheck(args, cts);
             RunLoop(server, cts.Token);
             discovery.Stop();
             server.Stop();
