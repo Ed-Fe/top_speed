@@ -28,6 +28,24 @@ namespace TopSpeed.Server.Updates
             $"https://api.github.com/repos/{RepoOwner}/{RepoName}/releases/latest",
             "TopSpeed.Server-{rid}-Release-v-{version}.zip");
 
+        public static ServerUpdateConfig ForRepo(string ownerSlashRepo)
+        {
+            if (string.IsNullOrWhiteSpace(ownerSlashRepo))
+                throw new ArgumentException("Repository must be in 'owner/repo' format.", nameof(ownerSlashRepo));
+
+            var slash = ownerSlashRepo.IndexOf('/');
+            if (slash <= 0 || slash == ownerSlashRepo.Length - 1)
+                throw new ArgumentException("Repository must be in 'owner/repo' format.", nameof(ownerSlashRepo));
+
+            var owner = ownerSlashRepo.Substring(0, slash).Trim();
+            var repo = ownerSlashRepo.Substring(slash + 1).Trim();
+
+            return new ServerUpdateConfig(
+                $"https://raw.githubusercontent.com/{owner}/{repo}/main/info.json",
+                $"https://api.github.com/repos/{owner}/{repo}/releases/latest",
+                "TopSpeed.Server-{rid}-Release-v-{version}.zip");
+        }
+
         public static ServerVersion CurrentVersion =>
             new ServerVersion(
                 ReleaseVersionInfo.ServerYear,

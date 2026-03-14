@@ -16,18 +16,32 @@ namespace TopSpeed.Server
             if (HasArgument(args, "--apply-update"))
                 return RunApplyUpdate(args);
             if (HasArgument(args, "--check-update"))
-                return RunCheckUpdate();
+                return RunCheckUpdate(args);
             if (HasArgument(args, "--update"))
-                return RunUpdate();
+                return RunUpdate(args);
             return null;
         }
 
         private const int DefaultAutoUpdateIntervalMinutes = 60;
         private const int MinAutoUpdateIntervalMinutes = 5;
 
+        private static ServerUpdateConfig GetUpdateConfig(string[] args)
+        {
+            var repo = GetArgumentValue(args, "--update-repo");
+            if (!string.IsNullOrWhiteSpace(repo))
+            {
+                try { return ServerUpdateConfig.ForRepo(repo!); }
+                catch (ArgumentException ex)
+                {
+                    ConsoleSink.WriteLine($"[Update] Invalid --update-repo value: {ex.Message} Falling back to default.");
+                }
+            }
+            return ServerUpdateConfig.Default;
+        }
+
         private static void StartBackgroundUpdateCheck(string[] args, CancellationTokenSource stopSource)
         {
-            var config = ServerUpdateConfig.Default;
+            var config = GetUpdateConfig(args);
             var service = new ServerUpdateService(config);
             var current = ServerUpdateConfig.CurrentVersion;
             var rid = ServerUpdateConfig.CurrentRid;
@@ -152,9 +166,9 @@ namespace TopSpeed.Server
             return true;
         }
 
-        private static int RunCheckUpdate()
+        private static int RunCheckUpdate(string[] args)
         {
-            var config = ServerUpdateConfig.Default;
+            var config = GetUpdateConfig(args);
             var service = new ServerUpdateService(config);
             var current = ServerUpdateConfig.CurrentVersion;
             var rid = ServerUpdateConfig.CurrentRid;
@@ -201,9 +215,9 @@ namespace TopSpeed.Server
             return 10;
         }
 
-        private static int RunUpdate()
+        private static int RunUpdate(string[] args)
         {
-            var config = ServerUpdateConfig.Default;
+            var config = GetUpdateConfig(args);
             var service = new ServerUpdateService(config);
             var current = ServerUpdateConfig.CurrentVersion;
             var rid = ServerUpdateConfig.CurrentRid;
