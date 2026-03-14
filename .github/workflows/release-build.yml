@@ -6,6 +6,12 @@ on:
     paths-ignore:
       - '**.md'
       - '.gitignore'
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Tag/release target (ex: release-build, test-auto-update)"
+        required: false
+        default: "release-build"
 
 jobs:
   build:
@@ -13,6 +19,8 @@ jobs:
     runs-on: windows-latest
     permissions:
       contents: write
+    env:
+      RELEASE_TAG: ${{ github.event.inputs.release_tag || 'release-build' }}
 
     defaults:
       run:
@@ -154,14 +162,14 @@ jobs:
       run: |
         git config --global user.email "actions@github.com"
         git config --global user.name "GitHub Actions"
-        git tag -fa release-build -m "Latest Release Build"
-        git push -f origin release-build
+        git tag -fa "$RELEASE_TAG" -m "Latest Release Build"
+        git push -f origin "$RELEASE_TAG"
 
     - name: Clean Existing Release Assets
       uses: actions/github-script@v7
       with:
         script: |
-          const tag = "release-build";
+          const tag = process.env.RELEASE_TAG || "release-build";
           let release;
           try {
             const releaseResponse = await github.rest.repos.getReleaseByTag({
@@ -197,8 +205,8 @@ jobs:
     - name: Release
       uses: softprops/action-gh-release@v1
       with:
-        tag_name: release-build
-        name: Release Build v${{ steps.release_info.outputs.version }}
+        tag_name: ${{ env.RELEASE_TAG }}
+        name: Release Build (${{ env.RELEASE_TAG }}) v${{ steps.release_info.outputs.version }}
         body: |
           Game version: ${{ steps.release_info.outputs.version }}
           Server version: ${{ steps.release_info.outputs.server_version }}
