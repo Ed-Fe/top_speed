@@ -67,6 +67,8 @@ namespace TopSpeed.Server
             ConsoleSink.WriteLine("  --motd <text>           Message of the day.");
             ConsoleSink.WriteLine("  --log <levels>          Comma-separated levels: error,warning,info,debug,all.");
             ConsoleSink.WriteLine("  --log-file <path>       Output log file path (e.g. log.txt).");
+            ConsoleSink.WriteLine("  --check-update          Check for a newer server version and exit.");
+            ConsoleSink.WriteLine("  --update                Download and apply the latest server update, then exit.");
             ConsoleSink.WriteLine("  -h, --help              Show this help.");
         }
 
