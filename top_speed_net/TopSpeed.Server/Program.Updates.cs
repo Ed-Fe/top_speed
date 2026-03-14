@@ -90,8 +90,9 @@ namespace TopSpeed.Server
             {
                 result = await service.CheckAsync(current, rid, cancellationToken).ConfigureAwait(false);
             }
-            catch
+            catch (Exception ex)
             {
+                ConsoleSink.WriteLine($"[Update] Update check failed: {ex.Message}");
                 return false;
             }
 
@@ -109,12 +110,20 @@ namespace TopSpeed.Server
             ConsoleSink.WriteLine($"[Update] New version {result.Update.Version} found. Downloading...");
 
             ServerDownloadResult downloadResult;
+            var lastProgressBucket = -1;
             try
             {
                 downloadResult = await service.DownloadAsync(
                     result.Update,
                     AppContext.BaseDirectory,
-                    progress => { },
+                    progress =>
+                    {
+                        var bucket = progress.Percent / 25;
+                        if (bucket <= lastProgressBucket)
+                            return;
+                        lastProgressBucket = bucket;
+                        ConsoleSink.WriteLine($"[Update] Downloaded {progress.Percent}%");
+                    },
                     cancellationToken).ConfigureAwait(false);
             }
             catch (Exception ex)
