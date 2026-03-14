@@ -75,7 +75,7 @@ namespace TopSpeed.Server
             discovery.Start();
             if (!loggingEnabled)
                 ConsoleSink.WriteLine("Server started. Press Ctrl+C to stop.");
-            StartBackgroundUpdateCheck();
+            StartBackgroundUpdateCheck(args, cts);
             RunLoop(server, cts.Token);
             discovery.Stop();
             server.Stop();

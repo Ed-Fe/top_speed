@@ -22,26 +22,125 @@ namespace TopSpeed.Server
             return null;
         }
 
-        private static void StartBackgroundUpdateCheck()
+        private const int DefaultAutoUpdateIntervalMinutes = 60;
+        private const int MinAutoUpdateIntervalMinutes = 5;
+
+        private static void StartBackgroundUpdateCheck(string[] args, CancellationTokenSource stopSource)
         {
             var config = ServerUpdateConfig.Default;
             var service = new ServerUpdateService(config);
             var current = ServerUpdateConfig.CurrentVersion;
             var rid = ServerUpdateConfig.CurrentRid;
+            var autoUpdate = HasArgument(args, "--auto-update");
+            var intervalMinutes = GetAutoUpdateIntervalMinutes(args);
 
-            Task.Run(() => service.CheckAsync(current, rid, CancellationToken.None))
-                .ContinueWith(t =>
+            Task.Run(async () =>
+            {
+                var shouldStop = await CheckAndMaybeApplyUpdateAsync(
+                    service, current, rid, autoUpdate, stopSource.Token).ConfigureAwait(false);
+                if (shouldStop || !autoUpdate)
                 {
-                    if (t.IsFaulted || t.IsCanceled)
-                        return;
-                    var result = t.GetAwaiter().GetResult();
-                    if (result.IsSuccess && result.Update != null)
+                    if (shouldStop)
+                        stopSource.Cancel();
+                    return;
+                }
+
+                var period = TimeSpan.FromMinutes(intervalMinutes);
+                ConsoleSink.WriteLine($"[Update] Auto-update checks enabled every {intervalMinutes} minute(s).");
+
+                using var timer = new PeriodicTimer(period);
+                while (await timer.WaitForNextTickAsync(stopSource.Token).ConfigureAwait(false))
+                {
+                    shouldStop = await CheckAndMaybeApplyUpdateAsync(
+                        service, current, rid, autoUpdate, stopSource.Token).ConfigureAwait(false);
+                    if (shouldStop)
                     {
-                        ConsoleSink.WriteLine(
-                            $"[Update] A new server version {result.Update.Version} is available. " +
-                            "Run with --update to upgrade.");
+                        stopSource.Cancel();
+                        return;
                     }
-                }, TaskScheduler.Default);
+                }
+            }, stopSource.Token);
+        }
+
+        private static int GetAutoUpdateIntervalMinutes(string[] args)
+        {
+            if (!TryGetIntArg(args, "--update-interval-minutes", out var minutes))
+                return DefaultAutoUpdateIntervalMinutes;
+
+            if (minutes < MinAutoUpdateIntervalMinutes)
+            {
+                ConsoleSink.WriteLine(
+                    $"[Update] --update-interval-minutes too low ({minutes}). " +
+                    $"Using {MinAutoUpdateIntervalMinutes}.");
+                return MinAutoUpdateIntervalMinutes;
+            }
+
+            return minutes;
+        }
+
+        private static async Task<bool> CheckAndMaybeApplyUpdateAsync(
+            ServerUpdateService service,
+            ServerVersion current,
+            string rid,
+            bool autoUpdate,
+            CancellationToken cancellationToken)
+        {
+            ServerUpdateCheckResult result;
+            try
+            {
+                result = await service.CheckAsync(current, rid, cancellationToken).ConfigureAwait(false);
+            }
+            catch
+            {
+                return false;
+            }
+
+            if (!result.IsSuccess || result.Update == null)
+                return false;
+
+            if (!autoUpdate)
+            {
+                ConsoleSink.WriteLine(
+                    $"[Update] A new server version {result.Update.Version} is available. " +
+                    "Run with --update to upgrade.");
+                return false;
+            }
+
+            ConsoleSink.WriteLine($"[Update] New version {result.Update.Version} found. Downloading...");
+
+            ServerDownloadResult downloadResult;
+            try
+            {
+                downloadResult = await service.DownloadAsync(
+                    result.Update,
+                    AppContext.BaseDirectory,
+                    progress => { },
+                    cancellationToken).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                ConsoleSink.WriteLine($"[Update] Auto-update download failed: {ex.Message}");
+                return false;
+            }
+
+            if (!downloadResult.IsSuccess)
+            {
+                ConsoleSink.WriteLine($"[Update] Auto-update download failed: {downloadResult.ErrorMessage}");
+                return false;
+            }
+
+            try
+            {
+                LaunchApplyUpdateProcess(downloadResult.ZipPath, Process.GetCurrentProcess().Id);
+            }
+            catch (Exception ex)
+            {
+                ConsoleSink.WriteLine($"[Update] Failed to launch updater: {ex.Message}");
+                return false;
+            }
+
+            ConsoleSink.WriteLine("[Update] Update downloaded. Stopping server to apply update.");
+            return true;
         }
 
         private static int RunCheckUpdate()

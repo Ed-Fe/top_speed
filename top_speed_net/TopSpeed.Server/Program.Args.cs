@@ -69,6 +69,8 @@ namespace TopSpeed.Server
             ConsoleSink.WriteLine("  --log-file <path>       Output log file path (e.g. log.txt).");
             ConsoleSink.WriteLine("  --check-update          Check for a newer server version and exit.");
             ConsoleSink.WriteLine("  --update                Download and apply the latest server update, then exit.");
+            ConsoleSink.WriteLine("  --auto-update           Check for updates periodically and apply automatically.");
+            ConsoleSink.WriteLine("  --update-interval-minutes <n>  Interval for --auto-update checks (min 5, default 60).");
             ConsoleSink.WriteLine("  -h, --help              Show this help.");
         }
 
